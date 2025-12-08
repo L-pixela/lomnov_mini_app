@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lomnov Camera</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo">Lomnov</div>
+        </header>
+
+        <main class="camera-view">
+            <div class="video-container">
+                <video id="camera-stream" autoplay playsinline muted></video>
+                <div class="camera-overlay">
+                    <div class="scan-line"></div>
+                </div>
+                <div id="error-message" class="error-message hidden">
+                    <p>Camera access required</p>
+                    <button id="retry-btn" class="btn-primary">Enable Camera</button>
+                </div>
+            </div>
+
+            <canvas id="photo-canvas" class="hidden"></canvas>
+            <div id="photo-preview" class="photo-preview hidden">
+                <img id="preview-img" alt="Captured Photo">
+                <div class="preview-actions">
+                    <button id="retake-btn" class="btn-secondary">Retake</button>
+                    <button id="save-btn" class="btn-primary">Save</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="controls">
+            <button id="capture-btn" class="capture-btn" aria-label="Take Photo">
+                <div class="capture-inner"></div>
+            </button>
+        </footer>
+    </div>
+    <script type="module" src="js/app.js"></script>
+</body>
+
+</html>
