@@ -116,72 +116,7 @@ async function startApp() {
     }
 }
 
-function setupManualCapture() {
-    captureBtn.addEventListener('click', async () => {
-        if (isProcessing) return;
 
-        isProcessing = true;
-
-        // UI Updates
-        statusBadge.innerText = 'Capturing...';
-        statusBadge.style.color = '#6c5ce7';
-        captureBtn.classList.add('active');
-        if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-
-        try {
-            // STEP 1: Capture
-            const frames = await processor.captureImmediate(camera.getVideo());
-
-            if (!frames || frames.length === 0) {
-                throw new Error("Failed to capture frame");
-            }
-
-            const bestFrame = frames[0];
-
-            // Clear previous drawings
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-            // STEP 2: Upload
-            statusBadge.innerText = 'Uploading...';
-            console.log("App: Uploading frame...");
-
-            if (!bestFrame.blob) {
-                throw new Error("Capture failed (No Blob created)");
-            }
-
-            const publicUrl = await uploadService.upload(bestFrame.blob);
-            console.log("App: Uploaded to", publicUrl);
-
-            // STEP 3: Detect
-            statusBadge.innerText = 'Analyzing...';
-            const apiResponse = await api.sendDetectionRequest(publicUrl);
-
-            // STEP 4: Handle Result
-            handleDetectionResult(apiResponse);
-
-        } catch (err) {
-            console.error("App Flow Error:", err);
-            statusBadge.innerText = 'Error';
-
-            // Show detailed error on screen for mobile debugging
-            const debugMsg = err.message || JSON.stringify(err);
-            if (window.onerror) window.onerror(debugMsg, 'app.js', 0, 0, err);
-
-        } finally {
-            isProcessing = false;
-            statusBadge.style.color = 'white';
-            captureBtn.classList.remove('active');
-
-            // Reset status
-            setTimeout(() => {
-                const currentStatus = statusBadge.innerText;
-                if (['Analyzing...', 'Uploading...', 'Error'].includes(currentStatus)) {
-                    statusBadge.innerText = 'Ready';
-                }
-            }, 3000);
-        }
-    });
-}
 
 function handleDetectionResult(response) {
     if (response.success && response.detections.length > 0) {
