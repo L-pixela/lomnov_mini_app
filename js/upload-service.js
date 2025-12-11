@@ -6,7 +6,7 @@
 export class UploadService {
     constructor() {
         // Configure your upload endpoint here (e.g., S3, Cloudinary, Imgur, or custom backend)
-        this.UPLOAD_URL = 'https://api.example.com/upload';
+        this.UPLOAD_URL = import.meta.env.UPLOAD_URL;
     }
 
     /**
@@ -35,17 +35,29 @@ export class UploadService {
         // For now, let's simulate a delay and return a fake URL 
         // just to demonstrate the flow. The API call will fail if it tries to fetch this URL.
 
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                // If you want to test with the API accepting Data URIs as "url" (some do):
-                // const reader = new FileReader();
-                // reader.onloadend = () => resolve(reader.result);
-                // reader.readAsDataURL(blob);
+        const formData = new FormData();
+        formData.append('file', blob);
 
-                // Use a placeholder for now as per plan
-                console.warn("UploadService: Using MOCK URL. Please implement real upload.");
-                resolve("https://placehold.co/600x400.png");
-            }, 1000);
+        const response = await fetch(this.UPLOAD_URL, {
+            method: 'POST',
+            body: formData
         });
+
+        if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Adjust this key based on your backend response structure
+        // Common keys: 'url', 'link', 'secure_url', 'data.url'
+        const publicUrl = data.url || data.link || data.secure_url;
+
+        if (!publicUrl) {
+            throw new Error("Upload successful but no URL returned in response");
+        }
+
+        console.log("UploadService: File uploaded:", publicUrl);
+        return publicUrl;
     }
 }

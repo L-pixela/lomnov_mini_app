@@ -5,6 +5,7 @@
 import { Camera } from './camera.js';
 import { FrameProcessor } from './frame-processor.js';
 import { ApiService } from './api-service.js';
+import { UploadService } from './upload-service.js';
 
 // Init Telegram WebApp
 const tg = window.Telegram.WebApp;
@@ -27,6 +28,7 @@ document.querySelector('.camera-view').appendChild(statusBadge);
 const camera = new Camera(videoEl);
 const processor = new FrameProcessor();
 const api = new ApiService();
+const uploadService = new UploadService();
 const overlayCanvas = document.getElementById('overlay-canvas');
 const overlayCtx = overlayCanvas.getContext('2d');
 
