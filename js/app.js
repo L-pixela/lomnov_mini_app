@@ -15,11 +15,12 @@ tg.ready();
 const videoEl = document.getElementById('camera-stream');
 const uiOverlay = document.querySelector('.camera-overlay');
 const scanLine = document.querySelector('.scan-line');
+const captureBtn = document.getElementById('capture-btn'); // Capture button
 const statusBadge = document.createElement('div'); // New status indicator
 
 // Setup Status Badge
 statusBadge.className = 'status-badge';
-statusBadge.innerText = 'Initialize...';
+statusBadge.innerText = 'Ready';
 document.querySelector('.camera-view').appendChild(statusBadge);
 
 // Modules
@@ -31,7 +32,6 @@ const overlayCtx = overlayCanvas.getContext('2d');
 
 // State
 let isProcessing = false;
-let detectionInterval = null;
 
 function resizeCanvas() {
     overlayCanvas.width = videoEl.videoWidth;
@@ -42,12 +42,13 @@ async function startApp() {
     try {
         statusBadge.innerText = 'Starting Camera...';
         await camera.start();
-        statusBadge.innerText = 'Scanning...';
+        statusBadge.innerText = 'Ready';
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Start Analysis Loop
-        startAnalysis();
+        // MANUAL MODE: Wait for user click
+        setupManualCapture();
+
     } catch (e) {
         console.error(e);
         statusBadge.innerText = 'Camera Error';
@@ -55,43 +56,53 @@ async function startApp() {
     }
 }
 
-function startAnalysis() {
-    // Run analysis every 200ms (5 FPS) to save battery while keeping UI responsive
-    detectionInterval = setInterval(async () => {
-        if (isProcessing) return; // Don't stack requests
+function setupManualCapture() {
+    captureBtn.addEventListener('click', async () => {
+        if (isProcessing) return;
 
-        const result = processor.process(camera.getVideo());
+        // UI Feedback
+        isProcessing = true;
+        statusBadge.innerText = 'Capturing...';
+        statusBadge.style.color = '#6c5ce7';
+        captureBtn.classList.add('active'); // Add visual press effect if CSS supports it
 
-        if (result) {
-            // Found good frames!
-            isProcessing = true;
-            statusBadge.innerText = 'Analyzing Objects...';
-            statusBadge.style.color = '#6c5ce7'; // Primary color
-            scanLine.style.boxShadow = '0 0 15px #6c5ce7'; // Emphasize scan line
+        // Haptic Feedback for press
+        if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
-            // Clear previous boxes
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        try {
+            // 1. Capture Frame immediately
+            const frames = processor.captureImmediate(camera.getVideo());
 
-            try {
-                const apiResponse = await api.sendDetectionRequest(result);
+            if (frames) {
+                statusBadge.innerText = 'Analyzing...';
+
+                // 2. Clear previous drawings
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+                // 3. Send to API
+                const apiResponse = await api.sendDetectionRequest(frames);
+
+                // 4. Handle Result
                 handleDetectionResult(apiResponse);
-            } catch (err) {
-                console.error(err);
-                statusBadge.innerText = 'Network Error';
-            } finally {
-                // Cooldown before next detection
-                setTimeout(() => {
-                    isProcessing = false;
-                    statusBadge.innerText = 'Scanning...';
-                    statusBadge.style.color = 'white';
-                    scanLine.style.boxShadow = '0 0 10px var(--primary-color)';
-                    // Clear boxes after cooldown? Or keep them until next scan? 
-                    // Let's fade them out or clear them when scanning resumes logic picks up.
-                    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-                }, 3000);
             }
+        } catch (err) {
+            console.error(err);
+            statusBadge.innerText = 'Error';
+            // Show error in global handler too for visibility
+            if (window.onerror) window.onerror(err.message, 'app.js', 0, 0, err);
+        } finally {
+            isProcessing = false;
+            statusBadge.style.color = 'white';
+            captureBtn.classList.remove('active');
+
+            // Reset status after a delay unless we found objects
+            setTimeout(() => {
+                if (statusBadge.innerText === 'Analyzing...' || statusBadge.innerText === 'Error') {
+                    statusBadge.innerText = 'Ready';
+                }
+            }, 3000);
         }
-    }, 200);
+    });
 }
 
 function handleDetectionResult(response) {

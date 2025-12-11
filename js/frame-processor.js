@@ -14,6 +14,29 @@ export class FrameProcessor {
     }
 
     /**
+     * Captures a single frame immediately (Manual Mode).
+     * @param {HTMLVideoElement} video 
+     * @returns {Array} Array containing the single captured frame.
+     */
+    captureImmediate(video) {
+        if (!video || video.videoWidth === 0) return null;
+
+        if (this.canvas.width !== video.videoWidth) {
+            this.canvas.width = video.videoWidth;
+            this.canvas.height = video.videoHeight;
+        }
+
+        this.ctx.drawImage(video, 0, 0);
+
+        const frame = {
+            timestamp: Date.now(),
+            dataUrl: this.canvas.toDataURL('image/jpeg', 0.9)
+        };
+
+        return [frame];
+    }
+
+    /**
      * Processing Loop
      * @param {HTMLVideoElement} video 
      * @returns {Object|null} A result object if we have a qualified batch, else null.
