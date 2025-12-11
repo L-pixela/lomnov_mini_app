@@ -12,19 +12,19 @@ export class ApiService {
         }
     }
 
-    async sendDetectionRequest(imageUrl) {
-        if (!imageUrl) {
-            logger.error("No URL provided to API");
+    async sendDetectionRequest(base64Image) {
+        if (!base64Image) {
+            logger.error("No image data provided to API");
             return;
         }
 
         logger.log(`API: Sending request to Roboflow...`);
-        logger.log(`API: URL: ${imageUrl.substring(0, 30)}...`);
+        // logger.log(`API: Data length: ${base64Image.length}`); 
 
         try {
-            // New Format: URL input
+            // New Format: Base64 input
             const inputs = {
-                "image": { "type": "url", "value": imageUrl }
+                "image": { "type": "base64", "value": base64Image }
             };
 
             const response = await fetch(this.API_URL, {
