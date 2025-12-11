@@ -5,7 +5,7 @@
 
 export class ApiService {
     constructor() {
-        this.API_URL = 'https://api.example.com/detect'; // REPLACE with actual endpoint
+        this.API_URL = 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow'; // REPLACE with actual endpoint
     }
 
     /**
@@ -41,11 +41,21 @@ export class ApiService {
                SIMULATION MODE 
                Since we don't have a real backend, we simulate network delay and a random response.
             */
-            // const response = await fetch(this.API_URL, {
-            //     method: 'POST',
-            //     body: formData
-            // });
-            // return await response.json();
+            const response = await fetch(this.API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    api_key: 'MNYtURs9SnSz7i9LwyfS',
+                    inputs: {
+                        "image": { "type": "url", "value": "IMAGE_URL" }
+                    }
+                })
+            });
+
+            const result = await response.json();
+            console.log(result);
 
             return await this.simulateApiResponse();
 

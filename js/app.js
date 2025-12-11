@@ -19,42 +19,37 @@ const statusBadge = document.createElement('div'); // New status indicator
 
 // Setup Status Badge
 statusBadge.className = 'status-badge';
-statusBadge.style.cssText = `
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.6);
-    color: white;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 14px;
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(255,255,255,0.1);
-    z-index: 100;
-    transition: all 0.3s ease;
-`;
-statusBadge.innerHTML = 'Initialize...';
+statusBadge.innerText = 'Initialize...';
 document.querySelector('.camera-view').appendChild(statusBadge);
 
 // Modules
 const camera = new Camera(videoEl);
 const processor = new FrameProcessor();
 const api = new ApiService();
+const overlayCanvas = document.getElementById('overlay-canvas');
+const overlayCtx = overlayCanvas.getContext('2d');
 
 // State
 let isProcessing = false;
 let detectionInterval = null;
+
+function resizeCanvas() {
+    overlayCanvas.width = videoEl.videoWidth;
+    overlayCanvas.height = videoEl.videoHeight;
+}
 
 async function startApp() {
     try {
         statusBadge.innerText = 'Starting Camera...';
         await camera.start();
         statusBadge.innerText = 'Scanning...';
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
 
         // Start Analysis Loop
         startAnalysis();
     } catch (e) {
+        console.error(e);
         statusBadge.innerText = 'Camera Error';
         statusBadge.style.background = 'rgba(231, 76, 60, 0.8)';
     }
@@ -74,6 +69,9 @@ function startAnalysis() {
             statusBadge.style.color = '#6c5ce7'; // Primary color
             scanLine.style.boxShadow = '0 0 15px #6c5ce7'; // Emphasize scan line
 
+            // Clear previous boxes
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
             try {
                 const apiResponse = await api.sendDetectionRequest(result);
                 handleDetectionResult(apiResponse);
@@ -87,7 +85,10 @@ function startAnalysis() {
                     statusBadge.innerText = 'Scanning...';
                     statusBadge.style.color = 'white';
                     scanLine.style.boxShadow = '0 0 10px var(--primary-color)';
-                }, 2000);
+                    // Clear boxes after cooldown? Or keep them until next scan? 
+                    // Let's fade them out or clear them when scanning resumes logic picks up.
+                    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                }, 3000);
             }
         }
     }, 200);
@@ -103,8 +104,36 @@ function handleDetectionResult(response) {
             tg.HapticFeedback.notificationOccurred('success');
         }
 
-        // Here you could draw bounding boxes on an overlay canvas
-        // based on response.detections[i].box
+        // Draw bounding boxes
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        response.detections.forEach(det => {
+            const [x, y, w, h] = det.box;
+
+            // Draw Box
+            overlayCtx.strokeStyle = '#6c5ce7';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.beginPath();
+
+            // Check for roundRect support
+            if (overlayCtx.roundRect) {
+                overlayCtx.roundRect(x, y, w, h, 8);
+            } else {
+                overlayCtx.rect(x, y, w, h);
+            }
+
+            overlayCtx.stroke();
+
+            // Draw Label Background
+            overlayCtx.fillStyle = '#6c5ce7';
+            overlayCtx.font = '16px Outfit';
+            const textWidth = overlayCtx.measureText(det.label).width;
+            overlayCtx.fillRect(x, y - 24, textWidth + 16, 24);
+
+            // Draw Label Text
+            overlayCtx.fillStyle = '#ffffff';
+            overlayCtx.fillText(det.label, x + 8, y - 6);
+        });
     } else {
         statusBadge.innerText = 'No objects found';
     }
