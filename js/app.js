@@ -64,7 +64,13 @@ async function startApp() {
 }
 
 function startScanning() {
-    const scanLoop = async () => {
+    let lastScanTime = 0;
+    const SCAN_INTERVAL = 500; // ms between API calls (adjustable)
+    const MIN_CONFIDENCE = 0.7; // Minimum confidence to confirm detection
+    let detectionStreak = 0; // Track consecutive detections
+    const REQUIRED_STREAK = 2; // Require 2 consecutive good detections
+
+    const scanLoop = () => {
         // Stop if tab hidden or camera stopped
         if (!camera.isPlaying()) {
             requestAnimationFrame(scanLoop);
@@ -77,50 +83,96 @@ function startScanning() {
             return;
         }
 
-        // Check for sharp frames
-        const frames = processor.process(camera.getVideo());
-
-        if (frames && frames.length > 0) {
-            isProcessing = true;
-            logger.log("Scanner: Sharp frame found!");
-
-            // Visual feedback - flash or status update
-            statusBadge.innerText = 'Analyzing...';
-            statusBadge.style.color = '#6c5ce7';
-            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-
-            try {
-                const bestFrame = frames[0];
-                const rawBase64 = bestFrame.dataUrl.split(',')[1];
-
-                const apiResponse = await api.sendDetectionRequest(rawBase64);
-
-                handleDetectionResult(apiResponse);
-
-                // COOLDOWN: Wait 2s before scanning again so user can see boxes
-                await new Promise(r => setTimeout(r, 2000));
-
-            } catch (err) {
-                logger.error(`Scanner: ${err.message}`);
-                statusBadge.innerText = 'Error';
-            } finally {
-                isProcessing = false;
-                statusBadge.style.color = 'white';
-
-                // Clear boxes after cooldown if desired? 
-                // For now, let's keep them until next detection or clear them here.
-                // overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); 
-
-                if (['Analyzing...', 'Error'].includes(statusBadge.innerText)) {
-                    statusBadge.innerText = 'Scanning...';
-                }
-            }
+        // Throttle: Only scan every SCAN_INTERVAL milliseconds
+        const now = Date.now();
+        if (now - lastScanTime < SCAN_INTERVAL) {
+            requestAnimationFrame(scanLoop);
+            return;
         }
 
-        requestAnimationFrame(scanLoop);
+        // Capture frame (no sharpness check)
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const video = camera.getVideo();
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Convert to base64
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // Reduced quality for speed
+        const rawBase64 = dataUrl.split(',')[1];
+
+        // Start processing this frame
+        lastScanTime = now;
+        isProcessing = true;
+
+        // Visual feedback
+        statusBadge.innerText = 'Analyzing...';
+        statusBadge.style.color = '#6c5ce7';
+        if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+
+        // Send to API
+        api.sendDetectionRequest(rawBase64)
+            .then(apiResponse => {
+                // Check if we have confident detections
+                const confidentDetections = apiResponse.detections?.filter(d => d.confidence >= MIN_CONFIDENCE) || [];
+
+                if (confidentDetections.length > 0) {
+                    detectionStreak++;
+                    logger.log(`Scanner: Good detection! Streak: ${detectionStreak}/${REQUIRED_STREAK}`);
+
+                    if (detectionStreak >= REQUIRED_STREAK) {
+                        // CONFIRMED DETECTION!
+                        handleDetectionResult(apiResponse);
+
+                        // Reset streak
+                        detectionStreak = 0;
+
+                        // Visual feedback for success
+                        statusBadge.innerText = `Found: ${confidentDetections[0].label}`;
+                        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+
+                        // Optional: Pause scanning for 2 seconds to show results
+                        setTimeout(() => {
+                            isProcessing = false;
+                            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                            statusBadge.innerText = 'Scanning...';
+                            requestAnimationFrame(scanLoop);
+                        }, 2000);
+                        return; // Don't continue loop yet
+                    }
+                } else {
+                    // No confident detection - reset streak
+                    detectionStreak = 0;
+
+                    // Visual feedback (subtle)
+                    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                    statusBadge.innerText = 'Scanning...';
+                    statusBadge.style.color = 'white';
+                }
+
+                // Continue scanning
+                isProcessing = false;
+                requestAnimationFrame(scanLoop);
+            })
+            .catch(err => {
+                logger.error(`Scanner: ${err.message}`);
+                statusBadge.innerText = 'Error';
+                statusBadge.style.color = '#ff7675';
+
+                // Retry after error
+                setTimeout(() => {
+                    isProcessing = false;
+                    statusBadge.innerText = 'Scanning...';
+                    statusBadge.style.color = 'white';
+                    requestAnimationFrame(scanLoop);
+                }, 1000);
+            });
     };
 
-    logger.log("Scanner: Starting loop...");
+    logger.log("Scanner: Starting confidence-based scanning...");
+    statusBadge.innerText = 'Scanning...';
     requestAnimationFrame(scanLoop);
 }
 
