@@ -69,6 +69,7 @@ function startScanning() {
     const MIN_CONFIDENCE = 0.7; // Minimum confidence to confirm detection
     let detectionStreak = 0; // Track consecutive detections
     const REQUIRED_STREAK = 2; // Require 2 consecutive good detections
+    let objectsDetected = 0; // Track total objects found in this session
 
     const scanLoop = () => {
         // Stop if tab hidden or camera stopped
@@ -123,24 +124,63 @@ function startScanning() {
                     logger.log(`Scanner: Good detection! Streak: ${detectionStreak}/${REQUIRED_STREAK}`);
 
                     if (detectionStreak >= REQUIRED_STREAK) {
-                        // CONFIRMED DETECTION!
-                        handleDetectionResult(apiResponse);
+                        // SUCCESS: Confirmed Detection
+                        handleDetectionResult(apiResponse); // Draw bounding box and label
+                        objectsDetected++;
 
-                        // Reset streak
-                        detectionStreak = 0;
+                        // Show bounding box and label
+                        statusBadge.innerText = `Found #${objectsDetected}: ${confidentDetections[0].label}`;
+                        overlayCtx.lineWidth = 6;
+                        overlayCtx.stroke();
 
-                        // Visual feedback for success
-                        statusBadge.innerText = `Found: ${confidentDetections[0].label}`;
                         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-                        // Optional: Pause scanning for 2 seconds to show results
-                        setTimeout(() => {
+                        // CASE 1: First Object Found
+                        if (objectsDetected === 1) {
+                            logger.log("Scanner: Object 1 found. Waiting 10s...");
+                            isProcessing = false; // Stop temp
+
+                            // Visual Countdown or Message
+                            statusBadge.innerText = `Object 1 Found! Next scan in 10s...`;
+                            captureBtn.innerText = 'Wait...';
+
+                            setTimeout(() => {
+                                // Resume for Object 2
+                                logger.log("Scanner: Resuming for Object 2");
+                                statusBadge.innerText = 'Scanning for Object 2...';
+                                captureBtn.innerText = 'Scanning...';
+                                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+                                detectionStreak = 0; // Reset streak
+                                requestAnimationFrame(scanLoop); // Resume loop
+                            }, 10000);
+
+                            return; // Pause loop here, resume in timeout
+                        }
+
+                        // CASE 2: Second Object Found
+                        if (objectsDetected >= 2) {
+                            logger.log("Scanner: Object 2 found. All done.");
+                            statusBadge.innerText = `Completed! Found ${objectsDetected} objects.`;
+
+                            // STOP LOOP PERMANENTLY
                             isProcessing = false;
-                            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-                            statusBadge.innerText = 'Scanning...';
-                            requestAnimationFrame(scanLoop);
-                        }, 2000);
-                        return; // Don't continue loop yet
+
+                            // Show Reset Button
+                            captureBtn.innerText = 'Restart Flow';
+                            captureBtn.classList.add('active');
+                            captureBtn.onclick = () => {
+                                captureBtn.onclick = null;
+                                // Full Reset
+                                objectsDetected = 0;
+                                detectionStreak = 0;
+                                captureBtn.innerText = 'Scanning...';
+                                captureBtn.classList.remove('active');
+                                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                                startScanning();
+                            };
+                            return;
+                        }
                     }
                 } else {
                     // No confident detection - reset streak
