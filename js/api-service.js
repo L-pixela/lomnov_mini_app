@@ -5,59 +5,54 @@
 
 export class ApiService {
     constructor() {
-        this.API_URL = 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow'; // REPLACE with actual endpoint
+        this.API_URL = import.meta.env.VITE_API_URL || 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow';
+        this.API_KEY = import.meta.env.VITE_API_KEY;
+
+        if (!this.API_KEY) {
+            console.warn("ApiService: VITE_API_KEY is missing. Please check .env file.");
+        }
     }
 
     /**
-     * Sends the two best frames to the API.
+     * Sends the best frame to the API.
      * @param {Array} frames - Array of objects containing dataUrl or blobs
      */
     async sendDetectionRequest(frames) {
-        if (!frames || frames.length < 2) {
+        if (!frames || frames.length === 0) {
             console.warn("ApiService: Not enough frames to send.");
             return;
         }
 
-        console.log(`ApiService: Sending ${frames.length} frames...`);
+        console.log(`ApiService: Sending frame to Roboflow...`);
 
-        const formData = new FormData();
-
-        // Convert base64 to File objects
-        /* 
-           Note: In a real app, it's better to pass Blobs directly from FrameProcessor 
-           to avoid base64 overhead, but for this demo using DataURL is easier to debug 
-           and compatible with the 'draw to canvas' approach.
-        */
-
-        const file1 = await this.dataURLtoFile(frames[0].dataUrl, 'frame_1.jpg');
-        const file2 = await this.dataURLtoFile(frames[1].dataUrl, 'frame_2.jpg');
-
-        formData.append('image_1', file1);
-        formData.append('image_2', file2);
-        formData.append('timestamp', Date.now());
+        // Use the first frame (best sharpness)
+        const bestFrame = frames[0];
+        const base64Image = bestFrame.dataUrl;
 
         try {
-            /* 
-               SIMULATION MODE 
-               Since we don't have a real backend, we simulate network delay and a random response.
-            */
+            const inputs = {
+                "image": { "type": "base64", "value": base64Image }
+            };
+
             const response = await fetch(this.API_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    api_key: 'MNYtURs9SnSz7i9LwyfS',
-                    inputs: {
-                        "image": { "type": "url", "value": "IMAGE_URL" }
-                    }
+                    api_key: this.API_KEY,
+                    inputs: inputs
                 })
             });
 
-            const result = await response.json();
-            console.log(result);
+            if (!response.ok) {
+                throw new Error(`API Request failed: ${response.status} ${response.statusText}`);
+            }
 
-            return await this.simulateApiResponse();
+            const result = await response.json();
+            console.log("ApiService: Response received", result);
+
+            return this.formatResponse(result);
 
         } catch (error) {
             console.error('ApiService: Error sending frames', error);
@@ -65,7 +60,72 @@ export class ApiService {
         }
     }
 
+    formatResponse(apiResult) {
+        // Roboflow Workflow response format mapping
+        // Logic depends on the specific workflow output block name. 
+        // Usually it returns an object with keys corresponding to output names.
+        // Assuming output is `predictions` or standard Roboflow format.
+
+        // Check for standard prediction structure
+        // Workflows often return { "output_name": [ ... ] } or simple execution results.
+
+        let detections = [];
+
+        // Attempt to find an array in the result
+        // Common keys: 'predictions', 'output', 'results'
+        const possibleKeys = ['predictions', 'output', 'results', 'data'];
+
+        for (const key of possibleKeys) {
+            if (Array.isArray(apiResult[key])) {
+                detections = apiResult[key];
+                break;
+            }
+        }
+
+        // Fallback: checks if the root invalidates array logic or nested structure
+        // If specific format is known (from user snippet), use it. User didn't specify beyond URL.
+        // Let's assume standard Roboflow object detection format inside the array: 
+        // { class: "bottle", confidence: 0.9, x: 100, y: 100, width: 50, height: 50 }
+
+        // Map to app format: { label, confidence, box: [x, y, w, h] }
+        // Note: Roboflow often gives center_x, center_y. App expects top-left x, y? 
+        // Looking at app.js: 
+        // const [x, y, w, h] = det.box;
+        // overlayCtx.roundRect(x, y, w, h, 8);
+        // So App expects x, y (top-left), w, h.
+
+        const formattedDetections = detections.map(d => {
+            // Check coordinate format
+            let x = d.x;
+            let y = d.y;
+
+            // If API returns center coordinates (Roboflow often does), convert to top-left
+            // Usually Roboflow Standard API returns { x, y, width, height } where x,y are center.
+            // Let's assume center and convert. 
+            // If they are regular x,y (top-left), this subtraction might be wrong, 
+            // but 99% of Roboflow JSON is center-based. 
+
+            if (d.x !== undefined && d.width !== undefined) {
+                x = d.x - (d.width / 2);
+                y = d.y - (d.height / 2);
+            }
+
+            return {
+                label: d.class || d.label || 'unknown',
+                confidence: d.confidence || 0,
+                box: [x, y, d.width, d.height]
+            };
+        });
+
+        return {
+            success: true,
+            detections: formattedDetections,
+            message: "Objects detected"
+        };
+    }
+
     async dataURLtoFile(dataurl, filename) {
+        // ... (legacy helper, kept if needed but unused now)
         const arr = dataurl.split(',');
         const mime = arr[0].match(/:(.*?);/)[1];
         const bstr = atob(arr[1]);
@@ -75,20 +135,5 @@ export class ApiService {
             u8arr[n] = bstr.charCodeAt(n);
         }
         return new File([u8arr], filename, { type: mime });
-    }
-
-    simulateApiResponse() {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve({
-                    success: true,
-                    detections: [
-                        { label: 'bottle', confidence: 0.95, box: [100, 100, 200, 200] },
-                        { label: 'laptop', confidence: 0.88, box: [300, 150, 400, 300] }
-                    ],
-                    message: "Objects detected successfully"
-                });
-            }, 1500); // 1.5s simulated latency
-        });
     }
 }

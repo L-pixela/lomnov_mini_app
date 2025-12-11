@@ -10,7 +10,7 @@ export class FrameProcessor {
         this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
         this.buffer = []; // Store potential good frames
         this.BUFFER_SIZE = 5; // Keep analysis rolling window short
-        this.MIN_SHARPNESS_THRESHOLD = 100; // Arbitrary threshold, needs tuning
+        this.MIN_SHARPNESS_THRESHOLD = 20; // Lowered threshold for easier detection
     }
 
     /**
