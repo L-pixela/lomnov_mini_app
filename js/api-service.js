@@ -23,12 +23,12 @@ export class ApiService {
         try {
             // 1. Build the CORRECT request body for Serverless API
             const requestBody = {
+                api_keys: this.API_KEY,
                 inputs: [
                     {
-                        api_keys: this.API_KEY,
                         image: {
-                            type: "base64",
-                            value: base64Image
+                            "type": "base64",
+                            "value": base64Image
                         }
                     }
                 ]
