@@ -36,6 +36,7 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+          VITE_UPLOAD_URL: ${{ secrets.VITE_UPLOAD_URL }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

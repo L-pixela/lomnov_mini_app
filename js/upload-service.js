@@ -6,7 +6,7 @@
 export class UploadService {
     constructor() {
         // Configure your upload endpoint here (e.g., S3, Cloudinary, Imgur, or custom backend)
-        this.UPLOAD_URL = import.meta.env.UPLOAD_URL;
+        this.UPLOAD_URL = import.meta.env.VITE_UPLOAD_URL;
     }
 
     /**
