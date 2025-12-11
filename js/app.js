@@ -5,59 +5,7 @@ import { ApiService } from './api-service.js';
 
 // ... (setup)
 
-function setupManualCapture() {
-    captureBtn.addEventListener('click', async () => {
-        if (isProcessing) return;
 
-        isProcessing = true;
-        logger.log("--- Capture Started ---");
-
-        statusBadge.innerText = 'Capturing...';
-        statusBadge.style.color = '#6c5ce7';
-        captureBtn.classList.add('active');
-
-        try {
-            // STEP 1: Capture
-            logger.log("App: Capturing frame...");
-            const frames = await processor.captureImmediate(camera.getVideo());
-
-            if (!frames || frames.length === 0) {
-                throw new Error("Failed to capture frame");
-            }
-
-            const bestFrame = frames[0];
-
-            // STEP 2: Extract Base64 from Data URL
-            statusBadge.innerText = 'Preparing image...';
-            const fullDataUrl = bestFrame.dataUrl;
-            const rawBase64String = fullDataUrl.split(',')[1]; // Get part after "base64,"
-
-            // STEP 3: Send Base64 to API
-            statusBadge.innerText = 'Analyzing...';
-            logger.log("App: Requesting Detection...");
-            const apiResponse = await api.sendDetectionRequest(rawBase64String);
-
-            // STEP 4: Handle Result
-            logger.log("App: Detection Complete. Processing...");
-            handleDetectionResult(apiResponse);
-
-        } catch (err) {
-            logger.error(`App Error: ${err.message}`);
-            statusBadge.innerText = 'Error';
-            if (window.onerror) window.onerror(err.message, 'app.js', 0, 0, err);
-        } finally {
-            // ... (cleanup)
-            isProcessing = false;
-            statusBadge.style.color = 'white';
-            captureBtn.classList.remove('active');
-            setTimeout(() => {
-                if (statusBadge.innerText === 'Analyzing...' || statusBadge.innerText === 'Error') {
-                    statusBadge.innerText = 'Ready';
-                }
-            }, 3000);
-        }
-    });
-}
 
 // Init Telegram WebApp
 const tg = window.Telegram.WebApp;
@@ -97,12 +45,13 @@ async function startApp() {
     try {
         statusBadge.innerText = 'Starting Camera...';
         await camera.start();
-        statusBadge.innerText = 'Ready';
+        statusBadge.innerText = 'Scanning...'; // Changed to Scanning
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // MANUAL MODE: Wait for user click
-        setupManualCapture();
+        // REAL-TIME MODE: Auto-scan
+        startScanning();
+        // setupManualCapture(); // Disabled
 
     } catch (e) {
         logger.error(`App Error: ${e.message}`);
@@ -112,6 +61,67 @@ async function startApp() {
         statusBadge.innerText = 'Camera Error';
         statusBadge.style.background = 'rgba(231, 76, 60, 0.8)';
     }
+}
+
+function startScanning() {
+    const scanLoop = async () => {
+        // Stop if tab hidden or camera stopped
+        if (!camera.isPlaying()) {
+            requestAnimationFrame(scanLoop);
+            return;
+        }
+
+        // Don't process if already busy
+        if (isProcessing) {
+            requestAnimationFrame(scanLoop);
+            return;
+        }
+
+        // Check for sharp frames
+        const frames = processor.process(camera.getVideo());
+
+        if (frames && frames.length > 0) {
+            isProcessing = true;
+            logger.log("Scanner: Sharp frame found!");
+
+            // Visual feedback - flash or status update
+            statusBadge.innerText = 'Analyzing...';
+            statusBadge.style.color = '#6c5ce7';
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+
+            try {
+                const bestFrame = frames[0];
+                const rawBase64 = bestFrame.dataUrl.split(',')[1];
+
+                const apiResponse = await api.sendDetectionRequest(rawBase64);
+
+                handleDetectionResult(apiResponse);
+
+                // COOLDOWN: Wait 2s before scanning again so user can see boxes
+                await new Promise(r => setTimeout(r, 2000));
+
+            } catch (err) {
+                logger.error(`Scanner: ${err.message}`);
+                statusBadge.innerText = 'Error';
+            } finally {
+                isProcessing = false;
+                statusBadge.style.color = 'white';
+
+                // Clear boxes after cooldown if desired? 
+                // For now, let's keep them until next detection or clear them here.
+                // overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); 
+
+                if (['Analyzing...', 'Error'].includes(statusBadge.innerText)) {
+                    statusBadge.innerText = 'Scanning...';
+                }
+            }
+        }
+
+        requestAnimationFrame(scanLoop);
+    };
+
+    logger.log("Scanner: Starting loop...");
+    requestAnimationFrame(scanLoop);
 }
 
 
