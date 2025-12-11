@@ -23,11 +23,19 @@ export class ApiService {
         try {
             // 1. Build the CORRECT request body for Serverless API
             const requestBody = {
-                image: base64Image // Send the raw base64 string directly
+                inputs: [
+                    {
+                        api_keys: this.API_KEY,
+                        image: {
+                            type: "base64",
+                            value: base64Image
+                        }
+                    }
+                ]
             };
 
             // 2. Construct the URL with API key as a query parameter
-            const urlWithKey = `${this.API_URL}?api_key=${this.API_KEY}`;
+            const urlWithKey = `${this.API_URL}`;
 
             const response = await fetch(urlWithKey, { // Use the new URL
                 method: 'POST',
