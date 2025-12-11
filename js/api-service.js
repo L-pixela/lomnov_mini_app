@@ -1,30 +1,25 @@
-/**
- * api-service.js
- * Handles communication with the Object Detection Model API.
- */
+import { logger } from './logger.js';
 
 export class ApiService {
     constructor() {
+        // ...
         const env = import.meta.env || {};
         this.API_URL = env.VITE_API_URL || 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow-2';
         this.API_KEY = env.VITE_API_KEY;
 
         if (!this.API_KEY) {
-            console.warn("ApiService: VITE_API_KEY is missing. Please check .env file.");
+            logger.error("VITE_API_KEY is missing!");
         }
     }
 
-    /**
-     * Sends the image URL to the API.
-     * @param {string} imageUrl - The public URL of the uploaded image
-     */
     async sendDetectionRequest(imageUrl) {
         if (!imageUrl) {
-            console.warn("ApiService: No URL provided.");
+            logger.error("No URL provided to API");
             return;
         }
 
-        console.log(`ApiService: Sending URL to Roboflow...`, imageUrl);
+        logger.log(`API: Sending request to Roboflow...`);
+        logger.log(`API: URL: ${imageUrl.substring(0, 30)}...`);
 
         try {
             // New Format: URL input
@@ -44,16 +39,18 @@ export class ApiService {
             });
 
             if (!response.ok) {
-                throw new Error(`API Request failed: ${response.status} ${response.statusText}`);
+                const errText = await response.text();
+                logger.error(`API Failed: ${response.status} - ${errText}`);
+                throw new Error(`API Request failed: ${response.status}`);
             }
 
             const result = await response.json();
-            console.log("ApiService: Response received", result);
+            logger.log("API: Response received");
 
             return this.formatResponse(result);
 
         } catch (error) {
-            console.error('ApiService: Error sending request', error);
+            logger.error(`API Error: ${error.message}`);
             throw error;
         }
     }

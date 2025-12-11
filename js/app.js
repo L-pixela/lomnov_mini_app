@@ -1,11 +1,69 @@
-/**
- * app.js
- * Main controller for the Lomnov Camera App.
- */
+import { logger } from './logger.js';
 import { Camera } from './camera.js';
 import { FrameProcessor } from './frame-processor.js';
 import { ApiService } from './api-service.js';
 import { UploadService } from './upload-service.js';
+
+// ... (setup)
+
+function setupManualCapture() {
+    captureBtn.addEventListener('click', async () => {
+        if (isProcessing) return;
+
+        isProcessing = true;
+        logger.log("--- Capture Started ---");
+
+        statusBadge.innerText = 'Capturing...';
+        statusBadge.style.color = '#6c5ce7';
+        captureBtn.classList.add('active');
+
+        try {
+            // STEP 1: Capture
+            logger.log("App: Capturing frame...");
+            const frames = await processor.captureImmediate(camera.getVideo());
+
+            if (!frames || frames.length === 0) {
+                throw new Error("Failed to capture frame");
+            }
+
+            const bestFrame = frames[0];
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            // STEP 2: Upload
+            statusBadge.innerText = 'Uploading...';
+            logger.log("App: Starting Upload...");
+
+            if (!bestFrame.blob) throw new Error("No Blob created");
+
+            const publicUrl = await uploadService.upload(bestFrame.blob);
+            logger.log(`App: Uploaded. URL: ${publicUrl.substring(0, 20)}...`);
+
+            // STEP 3: Detect
+            statusBadge.innerText = 'Analyzing...';
+            logger.log("App: Requesting Detection...");
+            const apiResponse = await api.sendDetectionRequest(publicUrl);
+
+            // STEP 4: Handle Result
+            logger.log("App: Detection Complete. Processing...");
+            handleDetectionResult(apiResponse);
+
+        } catch (err) {
+            logger.error(`App Error: ${err.message}`);
+            statusBadge.innerText = 'Error';
+            if (window.onerror) window.onerror(err.message, 'app.js', 0, 0, err);
+        } finally {
+            // ... (cleanup)
+            isProcessing = false;
+            statusBadge.style.color = 'white';
+            captureBtn.classList.remove('active');
+            setTimeout(() => {
+                if (statusBadge.innerText === 'Analyzing...' || statusBadge.innerText === 'Error') {
+                    statusBadge.innerText = 'Ready';
+                }
+            }, 3000);
+        }
+    });
+}
 
 // Init Telegram WebApp
 const tg = window.Telegram.WebApp;

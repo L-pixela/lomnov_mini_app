@@ -1,63 +1,43 @@
-/**
- * upload-service.js
- * Handles uploading local blobs to a remote server to get a public URL.
- */
+import { logger } from './logger.js';
 
 export class UploadService {
     constructor() {
-        // Configure your upload endpoint here (e.g., S3, Cloudinary, Imgur, or custom backend)
         this.UPLOAD_URL = import.meta.env.VITE_UPLOAD_URL;
+        if (!this.UPLOAD_URL) {
+            logger.error("VITE_UPLOAD_URL is missing!");
+        }
     }
 
-    /**
-     * Uploads a Blob/File and returns the public URL.
-     * @param {Blob} blob - The image blob to upload.
-     * @returns {Promise<string>} The public URL of the uploaded image.
-     */
     async upload(blob) {
-        console.log("UploadService: Uploading blob...", blob.size, "bytes");
+        logger.log(`Upload: Starting (${blob.size} bytes)...`);
 
-        // TODO: IMPLEMENT REAL UPLOAD LOGIC HERE
-        // Example:
-        // const formData = new FormData();
-        // formData.append('file', blob);
-        // const res = await fetch(this.UPLOAD_URL, { method: 'POST', body: formData });
-        // const data = await res.json();
-        // return data.url;
+        try {
+            const formData = new FormData();
+            formData.append('file', blob);
 
-        // --- MOCK IMPLEMENTATION ---
-        // Since we don't have a real backend, we will return a placeholder URL 
-        // OR a Data URI if the API supports it (but user specifically asked for URL).
+            const response = await fetch(this.UPLOAD_URL, {
+                method: 'POST',
+                body: formData
+            });
 
-        // Assumption: For testing without a server, we might trick it with a Data URI 
-        // if strict URL validtion isn't enforced, OR this will fail until user adds real backend.
+            if (!response.ok) {
+                logger.error(`Upload Failed: ${response.status}`);
+                throw new Error(`Upload failed: ${response.status}`);
+            }
 
-        // For now, let's simulate a delay and return a fake URL 
-        // just to demonstrate the flow. The API call will fail if it tries to fetch this URL.
+            const data = await response.json();
+            const publicUrl = data.url || data.link || data.secure_url;
 
-        const formData = new FormData();
-        formData.append('file', blob);
+            if (!publicUrl) {
+                logger.error("Upload: No URL in response");
+                throw new Error("No URL returned");
+            }
 
-        const response = await fetch(this.UPLOAD_URL, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+            logger.log(`Upload: Success! URL obtained.`);
+            return publicUrl;
+        } catch (e) {
+            logger.error(`Upload logic error: ${e.message}`);
+            throw e;
         }
-
-        const data = await response.json();
-
-        // Adjust this key based on your backend response structure
-        // Common keys: 'url', 'link', 'secure_url', 'data.url'
-        const publicUrl = data.url || data.link || data.secure_url;
-
-        if (!publicUrl) {
-            throw new Error("Upload successful but no URL returned in response");
-        }
-
-        console.log("UploadService: File uploaded:", publicUrl);
-        return publicUrl;
     }
 }
