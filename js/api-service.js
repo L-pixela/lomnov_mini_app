@@ -5,8 +5,9 @@
 
 export class ApiService {
     constructor() {
-        this.API_URL = import.meta.env.VITE_API_URL || 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow';
-        this.API_KEY = import.meta.env.VITE_API_KEY;
+        const env = import.meta.env || {};
+        this.API_URL = env.VITE_API_URL || 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow';
+        this.API_KEY = env.VITE_API_KEY;
 
         if (!this.API_KEY) {
             console.warn("ApiService: VITE_API_KEY is missing. Please check .env file.");

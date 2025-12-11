@@ -10,6 +10,39 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        // Global Error Handler for Mobile Debugging
+        window.onerror = function (msg, url, line, col, error) {
+            const errDiv = document.createElement('div');
+            errDiv.style.position = 'fixed';
+            errDiv.style.top = '0';
+            errDiv.style.left = '0';
+            errDiv.style.width = '100%';
+            errDiv.style.background = 'red';
+            errDiv.style.color = 'white';
+            errDiv.style.zIndex = '9999';
+            errDiv.style.padding = '10px';
+            errDiv.style.fontSize = '12px';
+            errDiv.textContent = `Error: ${msg} at ${line}:${col}`;
+            document.body.appendChild(errDiv);
+            return false;
+        };
+        // Catch unhandled promise rejections
+        window.addEventListener('unhandledrejection', function (event) {
+            const errDiv = document.createElement('div');
+            errDiv.style.position = 'fixed';
+            errDiv.style.top = '20px'; // Offset
+            errDiv.style.left = '0';
+            errDiv.style.right = '0';
+            errDiv.style.background = 'orange';
+            errDiv.style.color = 'black';
+            errDiv.style.zIndex = '9999';
+            errDiv.style.padding = '10px';
+            errDiv.style.fontSize = '12px';
+            errDiv.textContent = `Promise Error: ${event.reason}`;
+            document.body.appendChild(errDiv);
+        });
+    </script>
 </head>
 
 <body>
