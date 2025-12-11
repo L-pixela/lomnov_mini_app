@@ -2,7 +2,6 @@ import { logger } from './logger.js';
 import { Camera } from './camera.js';
 import { FrameProcessor } from './frame-processor.js';
 import { ApiService } from './api-service.js';
-import { UploadService } from './upload-service.js';
 
 // ... (setup)
 
@@ -27,21 +26,16 @@ function setupManualCapture() {
             }
 
             const bestFrame = frames[0];
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-            // STEP 2: Upload
-            statusBadge.innerText = 'Uploading...';
-            logger.log("App: Starting Upload...");
+            // STEP 2: Extract Base64 from Data URL
+            statusBadge.innerText = 'Preparing image...';
+            const fullDataUrl = bestFrame.dataUrl;
+            const rawBase64String = fullDataUrl.split(',')[1]; // Get part after "base64,"
 
-            if (!bestFrame.blob) throw new Error("No Blob created");
-
-            const publicUrl = await uploadService.upload(bestFrame.blob);
-            logger.log(`App: Uploaded. URL: ${publicUrl.substring(0, 20)}...`);
-
-            // STEP 3: Detect
+            // STEP 3: Send Base64 to API
             statusBadge.innerText = 'Analyzing...';
             logger.log("App: Requesting Detection...");
-            const apiResponse = await api.sendDetectionRequest(publicUrl);
+            const apiResponse = await api.sendDetectionRequest(rawBase64String);
 
             // STEP 4: Handle Result
             logger.log("App: Detection Complete. Processing...");
@@ -86,7 +80,6 @@ document.querySelector('.camera-view').appendChild(statusBadge);
 const camera = new Camera(videoEl);
 const processor = new FrameProcessor();
 const api = new ApiService();
-const uploadService = new UploadService();
 const overlayCanvas = document.getElementById('overlay-canvas');
 const overlayCtx = overlayCanvas.getContext('2d');
 
@@ -94,6 +87,8 @@ const overlayCtx = overlayCanvas.getContext('2d');
 let isProcessing = false;
 
 function resizeCanvas() {
+    // Add null/undefined check
+    if (!videoEl.videoWidth || !videoEl.videoHeight) return;
     overlayCanvas.width = videoEl.videoWidth;
     overlayCanvas.height = videoEl.videoHeight;
 }
@@ -110,6 +105,9 @@ async function startApp() {
         setupManualCapture();
 
     } catch (e) {
+        logger.error(`App Error: ${e.message}`);
+        statusBadge.innerText = `Error: ${e.message.substring(0, 30)}...`;
+        statusBadge.style.color = '#ff7675';
         console.error(e);
         statusBadge.innerText = 'Camera Error';
         statusBadge.style.background = 'rgba(231, 76, 60, 0.8)';

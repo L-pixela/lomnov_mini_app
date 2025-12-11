@@ -28,15 +28,9 @@ export class FrameProcessor {
 
         this.ctx.drawImage(video, 0, 0);
 
-        // Generate Blob for upload
-        const blob = await new Promise(resolve => {
-            this.canvas.toBlob(resolve, 'image/jpeg', 0.95);
-        });
-
         const frame = {
             timestamp: Date.now(),
-            dataUrl: this.canvas.toDataURL('image/jpeg', 0.95),
-            blob: blob
+            dataUrl: this.canvas.toDataURL('image/jpeg', 0.95)
         };
 
         return [frame];

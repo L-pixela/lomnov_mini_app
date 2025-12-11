@@ -19,23 +19,22 @@ export class ApiService {
         }
 
         logger.log(`API: Sending request to Roboflow...`);
-        // logger.log(`API: Data length: ${base64Image.length}`); 
 
         try {
-            // New Format: Base64 input
-            const inputs = {
-                "image": { "type": "base64", "value": base64Image }
+            // 1. Build the CORRECT request body for Serverless API
+            const requestBody = {
+                image: base64Image // Send the raw base64 string directly
             };
 
-            const response = await fetch(this.API_URL, {
+            // 2. Construct the URL with API key as a query parameter
+            const urlWithKey = `${this.API_URL}?api_key=${this.API_KEY}`;
+
+            const response = await fetch(urlWithKey, { // Use the new URL
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    api_key: this.API_KEY,
-                    inputs: inputs
-                })
+                body: JSON.stringify(requestBody) // Send the simpler body
             });
 
             if (!response.ok) {
@@ -46,7 +45,6 @@ export class ApiService {
 
             const result = await response.json();
             logger.log("API: Response received");
-
             return this.formatResponse(result);
 
         } catch (error) {
