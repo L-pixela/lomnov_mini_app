@@ -15,24 +15,21 @@ export class ApiService {
     }
 
     /**
-     * Sends the best frame to the API.
-     * @param {Array} frames - Array of objects containing dataUrl or blobs
+     * Sends the image URL to the API.
+     * @param {string} imageUrl - The public URL of the uploaded image
      */
-    async sendDetectionRequest(frames) {
-        if (!frames || frames.length === 0) {
-            console.warn("ApiService: Not enough frames to send.");
+    async sendDetectionRequest(imageUrl) {
+        if (!imageUrl) {
+            console.warn("ApiService: No URL provided.");
             return;
         }
 
-        console.log(`ApiService: Sending frame to Roboflow...`);
-
-        // Use the first frame (best sharpness)
-        const bestFrame = frames[0];
-        const base64Image = bestFrame.dataUrl;
+        console.log(`ApiService: Sending URL to Roboflow...`, imageUrl);
 
         try {
+            // New Format: URL input
             const inputs = {
-                "image": { "type": "url", "value": base64Image }
+                "image": { "type": "url", "value": imageUrl }
             };
 
             const response = await fetch(this.API_URL, {
@@ -56,55 +53,64 @@ export class ApiService {
             return this.formatResponse(result);
 
         } catch (error) {
-            console.error('ApiService: Error sending frames', error);
+            console.error('ApiService: Error sending request', error);
             throw error;
         }
     }
 
     formatResponse(apiResult) {
-        // Roboflow Workflow response format mapping
-        // Logic depends on the specific workflow output block name. 
-        // Usually it returns an object with keys corresponding to output names.
-        // Assuming output is `predictions` or standard Roboflow format.
-
-        // Check for standard prediction structure
-        // Workflows often return { "output_name": [ ... ] } or simple execution results.
+        /*
+        Target structure:
+        {
+            "outputs": [
+                {
+                    "predictions": {
+                        "predictions": [ { ... }, ... ]
+                    }
+                }
+            ]
+        }
+        */
 
         let detections = [];
 
-        // Attempt to find an array in the result
-        // Common keys: 'predictions', 'output', 'results'
-        const possibleKeys = ['predictions', 'output', 'results', 'data'];
+        // 1. Try specific user format
+        try {
+            if (apiResult.outputs && apiResult.outputs.length > 0) {
+                const output = apiResult.outputs[0];
+                if (output.predictions && output.predictions.predictions) {
+                    detections = output.predictions.predictions;
+                }
+            }
+        } catch (e) {
+            console.warn("ApiService: Error parsing specifics, trying fallbacks", e);
+        }
 
-        for (const key of possibleKeys) {
-            if (Array.isArray(apiResult[key])) {
-                detections = apiResult[key];
-                break;
+        // 2. Fallbacks (if above failed or empty)
+        if (detections.length === 0) {
+            const possibleKeys = ['predictions', 'output', 'results', 'data'];
+            for (const key of possibleKeys) {
+                if (Array.isArray(apiResult[key])) {
+                    detections = apiResult[key];
+                    break;
+                }
             }
         }
 
-        // Fallback: checks if the root invalidates array logic or nested structure
-        // If specific format is known (from user snippet), use it. User didn't specify beyond URL.
-        // Let's assume standard Roboflow object detection format inside the array: 
-        // { class: "bottle", confidence: 0.9, x: 100, y: 100, width: 50, height: 50 }
-
-        // Map to app format: { label, confidence, box: [x, y, w, h] }
-        // Note: Roboflow often gives center_x, center_y. App expects top-left x, y? 
-        // Looking at app.js: 
-        // const [x, y, w, h] = det.box;
-        // overlayCtx.roundRect(x, y, w, h, 8);
-        // So App expects x, y (top-left), w, h.
-
         const formattedDetections = detections.map(d => {
-            // Check coordinate format
+            // App expects: { label, confidence, box: [x, y, w, h] }
+            // API provides: x, y (center usually?), width, height, class, confidence
+
+            // Note: Roboflow often gives center_x, center_y. 
+            // If the user's JSON shows x=501, width=254, let's assume it might be center or top-left.
+            // Standard Roboflow is center.
+
             let x = d.x;
             let y = d.y;
 
-            // If API returns center coordinates (Roboflow often does), convert to top-left
-            // Usually Roboflow Standard API returns { x, y, width, height } where x,y are center.
-            // Let's assume center and convert. 
-            // If they are regular x,y (top-left), this subtraction might be wrong, 
-            // but 99% of Roboflow JSON is center-based. 
+            // Convert to top-left for Canvas drawing if it seems to be center
+            // (Heuristic: if x > width/2, likely center. If x < width/2 could be top-left. 
+            // Safe bet with Roboflow is always Center).
 
             if (d.x !== undefined && d.width !== undefined) {
                 x = d.x - (d.width / 2);
