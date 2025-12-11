@@ -32,7 +32,7 @@ export class ApiService {
 
         try {
             const inputs = {
-                "image": { "type": "base64", "value": base64Image }
+                "image": { "type": "url", "value": base64Image }
             };
 
             const response = await fetch(this.API_URL, {

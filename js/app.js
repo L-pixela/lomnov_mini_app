@@ -155,6 +155,5 @@ document.addEventListener('DOMContentLoaded', startApp);
 
 // Cleanup
 window.addEventListener('beforeunload', () => {
-    if (detectionInterval) clearInterval(detectionInterval);
     camera.stop();
 });
