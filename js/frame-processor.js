@@ -18,7 +18,7 @@ export class FrameProcessor {
      * @param {HTMLVideoElement} video 
      * @returns {Array} Array containing the single captured frame.
      */
-    captureImmediate(video) {
+    async captureImmediate(video) {
         if (!video || video.videoWidth === 0) return null;
 
         if (this.canvas.width !== video.videoWidth) {
@@ -28,9 +28,15 @@ export class FrameProcessor {
 
         this.ctx.drawImage(video, 0, 0);
 
+        // Generate Blob for upload
+        const blob = await new Promise(resolve => {
+            this.canvas.toBlob(resolve, 'image/jpeg', 0.95);
+        });
+
         const frame = {
             timestamp: Date.now(),
-            dataUrl: this.canvas.toDataURL('image/jpeg', 0.9)
+            dataUrl: this.canvas.toDataURL('image/jpeg', 0.95),
+            blob: blob
         };
 
         return [frame];
