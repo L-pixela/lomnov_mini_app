@@ -7,7 +7,7 @@ export class ApiService {
     }
 
     /**
-     * @param {Blob | File | Uint8Array | ArrayBuffer} image
+     * @param {string | Blob | File | Uint8Array | ArrayBuffer} image
      */
     async sendDetectionRequest(image) {
         if (!image) {
@@ -18,22 +18,41 @@ export class ApiService {
         logger.log("API: Sending request to Smart Meter server...");
 
         try {
-            // Convert to base64 string instead of FormData
             let base64String = image;
 
+            // Convert to base64 if not already a string
             if (typeof image !== 'string') {
-                // Convert Blob to base64
-                const reader = new FileReader();
-                base64String = await new Promise((resolve, reject) => {
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(image);
-                });
-            } else if (image.includes(',')) {
-                base64String = image.split(',')[1];
+                // Handle Blob/File
+                if (image instanceof Blob || image instanceof File) {
+                    base64String = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const dataUrl = reader.result;
+                            // Remove "data:image/jpeg;base64," prefix if present
+                            const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+                            resolve(base64);
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(image);
+                    });
+                }
+                // Handle ArrayBuffer/Uint8Array
+                else if (image instanceof ArrayBuffer || image instanceof Uint8Array) {
+                    const bytes = image instanceof ArrayBuffer ? new Uint8Array(image) : image;
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    base64String = btoa(binary);
+                }
+            } else {
+                // Already a string - remove data URL prefix if present
+                if (base64String.includes(',')) {
+                    base64String = base64String.split(',')[1];
+                }
             }
 
-            // Send as JSON instead of FormData - avoids preflight
+            // Send as JSON to avoid CORS preflight
             const response = await fetch(this.API_URL, {
                 method: "POST",
                 headers: {
@@ -63,18 +82,20 @@ export class ApiService {
     }
 
     formatResponse(apiResult) {
-        // Adapt this to whatever your Flask API returns
-        // Assuming the new API returns { detections: [...] } or just [...]
-        // Adjust based on observation. For now, try to find an array.
-
+        // Handle different response formats from your Flask API
         let detections = [];
-        if (apiResult.detections) detections = apiResult.detections;
-        else if (Array.isArray(apiResult)) detections = apiResult;
-        else if (apiResult.data && Array.isArray(apiResult.data)) detections = apiResult.data;
+
+        if (apiResult.detections) {
+            detections = apiResult.detections;
+        } else if (Array.isArray(apiResult)) {
+            detections = apiResult;
+        } else if (apiResult.data && Array.isArray(apiResult.data)) {
+            detections = apiResult.data;
+        }
 
         return {
-            success: true,
-            detections: detections, // Ensure this exists for app.js
+            success: detections.length > 0 || apiResult.success === true,
+            detections: detections,
             data: apiResult
         };
     }
