@@ -3,10 +3,6 @@ import { Camera } from './camera.js';
 import { FrameProcessor } from './frame-processor.js';
 import { ApiService } from './api-service.js';
 
-// ... (setup)
-
-
-
 // Init Telegram WebApp
 const tg = window.Telegram.WebApp;
 tg.expand();
@@ -33,6 +29,7 @@ const overlayCtx = overlayCanvas.getContext('2d');
 
 // State
 let isProcessing = false;
+let capturedResults = []; // Store API responses
 
 function resizeCanvas() {
     // Add null/undefined check
@@ -137,6 +134,14 @@ function startScanning() {
 
                         // CASE 1: First Object Found
                         if (objectsDetected === 1) {
+                            // Save Result 1
+                            capturedResults.push({
+                                order: 1,
+                                timestamp: new Date().toISOString(),
+                                data: apiResponse
+                            });
+                            sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
+
                             logger.log("Scanner: Object 1 found. Waiting 10s...");
                             isProcessing = false; // Stop temp
 
@@ -160,6 +165,14 @@ function startScanning() {
 
                         // CASE 2: Second Object Found
                         if (objectsDetected >= 2) {
+                            // Save Result 2
+                            capturedResults.push({
+                                order: 2,
+                                timestamp: new Date().toISOString(),
+                                data: apiResponse
+                            });
+                            sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
+
                             logger.log("Scanner: Object 2 found. All done.");
                             statusBadge.innerText = `Completed! Found ${objectsDetected} objects.`;
 
@@ -174,6 +187,8 @@ function startScanning() {
                                 // Full Reset
                                 objectsDetected = 0;
                                 detectionStreak = 0;
+                                capturedResults = []; // Reset local array
+                                sessionStorage.removeItem('scanResults'); // Clear storage
                                 captureBtn.innerText = 'Scanning...';
                                 captureBtn.classList.remove('active');
                                 overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);

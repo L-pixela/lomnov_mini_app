@@ -21,6 +21,10 @@ export class Camera {
         try {
             // CRITICAL FIX: Check if getUserMedia exists
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                // Check if the issue is likely due to insecure context (HTTP vs HTTPS)
+                if (!window.isSecureContext) {
+                    throw new Error('Camera requires HTTPS. Please use a secure connection (ngrok/localhost).');
+                }
                 throw new Error('Camera API not supported in this browser');
             }
 
