@@ -21,16 +21,25 @@ export class ApiService {
             const formData = new FormData();
 
             // Ensure it's a Blob
-            const imageBlob =
-                image instanceof Blob
-                    ? image
-                    : new Blob([image], { type: "image/jpeg" });
+            let imageBlob = image;
+            if (typeof image === 'string') {
+                // Assume Base64 string (without data: prefix if passed from app.js)
+                const byteCharacters = atob(image);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                imageBlob = new Blob([byteArray], { type: "image/jpeg" });
+            } else if (!(image instanceof Blob)) {
+                imageBlob = new Blob([image], { type: "image/jpeg" });
+            }
 
             formData.append("image", imageBlob, "meter.jpg");
 
             const response = await fetch(this.API_URL, {
                 method: "POST",
-                body: formData // ❗ no Content-Type header for FormData
+                body: formData
             });
 
             if (!response.ok) {
@@ -52,8 +61,17 @@ export class ApiService {
 
     formatResponse(apiResult) {
         // Adapt this to whatever your Flask API returns
+        // Assuming the new API returns { detections: [...] } or just [...]
+        // Adjust based on observation. For now, try to find an array.
+
+        let detections = [];
+        if (apiResult.detections) detections = apiResult.detections;
+        else if (Array.isArray(apiResult)) detections = apiResult;
+        else if (apiResult.data && Array.isArray(apiResult.data)) detections = apiResult.data;
+
         return {
             success: true,
+            detections: detections, // Ensure this exists for app.js
             data: apiResult
         };
     }

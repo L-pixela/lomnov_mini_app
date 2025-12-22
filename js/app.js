@@ -62,7 +62,7 @@ async function startApp() {
 
 function startScanning() {
     let lastScanTime = 0;
-    const SCAN_INTERVAL = 500; // ms between API calls (adjustable)
+    const SCAN_INTERVAL = 1000; // Slower scan to wait for reliable response
     const MIN_CONFIDENCE = 0.7; // Minimum confidence to confirm detection
     let detectionStreak = 0; // Track consecutive detections
     const REQUIRED_STREAK = 2; // Require 2 consecutive good detections
@@ -77,7 +77,6 @@ function startScanning() {
 
         // Don't process if already busy
         if (isProcessing) {
-            requestAnimationFrame(scanLoop);
             return;
         }
 
@@ -138,6 +137,7 @@ function startScanning() {
                             capturedResults.push({
                                 order: 1,
                                 timestamp: new Date().toISOString(),
+                                image: `data:image/jpeg;base64,${rawBase64}`, // Save image
                                 data: apiResponse
                             });
                             sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
@@ -169,6 +169,7 @@ function startScanning() {
                             capturedResults.push({
                                 order: 2,
                                 timestamp: new Date().toISOString(),
+                                image: `data:image/jpeg;base64,${rawBase64}`, // Save image
                                 data: apiResponse
                             });
                             sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
