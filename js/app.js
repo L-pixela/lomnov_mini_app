@@ -46,9 +46,9 @@ async function startApp() {
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // REAL-TIME MODE: Auto-scan
-        startScanning();
-        // setupManualCapture(); // Disabled
+        // MANUAL MODE: Capture on button click
+        setupManualCapture();
+        // startScanning(); // Disable auto-scan
 
     } catch (e) {
         logger.error(`App Error: ${e.message}`);
@@ -245,7 +245,71 @@ function startScanning() {
     requestAnimationFrame(scanLoop);
 }
 
+function setupManualCapture() {
+    captureBtn.innerText = 'Take Photo';
+    captureBtn.classList.add('active');
+    statusBadge.innerText = 'Ready to Capture';
 
+    captureBtn.onclick = async () => {
+        if (isProcessing || !camera.isPlaying()) return;
+
+        try {
+            isProcessing = true;
+            captureBtn.innerText = 'Processing...';
+            statusBadge.innerText = 'Capturing...';
+
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+
+            // 1. Capture Frame
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const video = camera.getVideo();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 2. Convert to Base64
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const rawBase64 = dataUrl.split(',')[1];
+
+            // 3. Send to API
+            statusBadge.innerText = 'Analyzing...';
+            const apiResponse = await api.sendDetectionRequest(rawBase64);
+
+            // 4. Handle Result
+            handleDetectionResult(apiResponse);
+
+            // 5. Save Result
+            const objectIndex = capturedResults.length + 1;
+            capturedResults.push({
+                order: objectIndex,
+                timestamp: new Date().toISOString(),
+                image: dataUrl, // Save full data URL for easy display
+                data: apiResponse
+            });
+            sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
+
+            // 6. Update UI
+            if (apiResponse.success) {
+                statusBadge.innerText = `Captured #${objectIndex}`;
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            } else {
+                statusBadge.innerText = 'No objects detected';
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+            }
+
+            logger.log(`Manual Capture: Object ${objectIndex} processed.`);
+
+        } catch (err) {
+            logger.error(`Manual Capture Error: ${err.message}`);
+            statusBadge.innerText = 'Error capturing';
+            statusBadge.style.color = '#ff7675';
+        } finally {
+            isProcessing = false;
+            captureBtn.innerText = 'Take Next Photo';
+        }
+    };
+}
 
 function handleDetectionResult(response) {
     if (response.success && response.detections.length > 0) {
