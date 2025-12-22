@@ -62,53 +62,66 @@ async function startApp() {
 
 function startScanning() {
     let lastScanTime = 0;
-    const SCAN_INTERVAL = 1000; // Slower scan to wait for reliable response
-    const MIN_CONFIDENCE = 0.7; // Minimum confidence to confirm detection
-    let detectionStreak = 0; // Track consecutive detections
-    const REQUIRED_STREAK = 2; // Require 2 consecutive good detections
-    let objectsDetected = 0; // Track total objects found in this session
+    let lastFrameData = null;
+    let objectsDetected = 0;
+    let detectionStreak = 0;
+
+    const SCAN_INTERVAL = 2000; // 2 seconds between attempts
+    const MIN_CONFIDENCE = 0.7;
+    const REQUIRED_STREAK = 2;
+    const CHANGE_THRESHOLD = 0.12; // Sensitivity for frame changes
 
     const scanLoop = () => {
-        // Stop if tab hidden or camera stopped
-        if (!camera.isPlaying()) {
+        if (!camera.isPlaying() || isProcessing) {
             requestAnimationFrame(scanLoop);
             return;
         }
 
-        // Don't process if already busy
-        if (isProcessing) {
-            return;
-        }
-
-        // Throttle: Only scan every SCAN_INTERVAL milliseconds
         const now = Date.now();
         if (now - lastScanTime < SCAN_INTERVAL) {
             requestAnimationFrame(scanLoop);
             return;
         }
 
-        // Capture frame (no sharpness check)
+        // Capture frame
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const video = camera.getVideo();
-
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Convert to base64
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // Reduced quality for speed
-        const rawBase64 = dataUrl.split(',')[1];
+        // Check if scene changed significantly
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        // Start processing this frame
+        if (lastFrameData) {
+            let diff = 0;
+            const sampleRate = 20; // Sample every 20th pixel
+
+            for (let i = 0; i < imageData.data.length; i += sampleRate * 4) {
+                diff += Math.abs(imageData.data[i] - lastFrameData.data[i]);
+            }
+
+            const avgDiff = diff / (imageData.data.length / (sampleRate * 4));
+            const changePercent = avgDiff / 255;
+
+            if (changePercent < CHANGE_THRESHOLD) {
+                // Scene hasn't changed enough - skip API call
+                requestAnimationFrame(scanLoop);
+                return;
+            }
+        }
+
+        lastFrameData = imageData;
         lastScanTime = now;
         isProcessing = true;
 
-        // Visual feedback
-        statusBadge.innerText = 'Analyzing...';
-        statusBadge.style.color = '#6c5ce7';
-        if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        // Convert and send to API
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        const rawBase64 = dataUrl.split(',')[1];
 
+        statusBadge.innerText = 'Analyzing...';
+        if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
         // Send to API
         api.sendDetectionRequest(rawBase64)
             .then(apiResponse => {
