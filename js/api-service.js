@@ -18,35 +18,31 @@ export class ApiService {
         logger.log("API: Sending request to Smart Meter server...");
 
         try {
-            const formData = new FormData();
+            // Convert to base64 string instead of FormData
+            let base64String = image;
 
-            // Ensure it's a Blob
-            let imageBlob = image;
-            if (typeof image === 'string') {
-                let base64 = image;
-                if (base64.includes(',')) {
-                    base64 = base64.split(',')[1];
-                }
-
-                const binary = atob(base64);
-                const bytes = new Uint8Array(binary.length);
-                for (let i = 0; i < binary.length; i++) {
-                    bytes[i] = binary.charCodeAt(i);
-                }
-
-                imageBlob = new Blob([bytes], { type: "image/jpeg" });
-            } else if (!(image instanceof Blob)) {
-                imageBlob = new Blob([image], { type: "image/jpeg" });
+            if (typeof image !== 'string') {
+                // Convert Blob to base64
+                const reader = new FileReader();
+                base64String = await new Promise((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(image);
+                });
+            } else if (image.includes(',')) {
+                base64String = image.split(',')[1];
             }
 
-            formData.append("image", imageBlob, "meter.jpg");
-
+            // Send as JSON instead of FormData - avoids preflight
             const response = await fetch(this.API_URL, {
                 method: "POST",
                 headers: {
+                    "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 },
-                body: formData
+                body: JSON.stringify({
+                    image: base64String
+                })
             });
 
             if (!response.ok) {
