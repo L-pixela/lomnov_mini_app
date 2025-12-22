@@ -23,16 +23,21 @@ export class ApiService {
             // Ensure it's a Blob
             let imageBlob = image;
             if (typeof image === 'string') {
-                // Assume Base64 string (without data: prefix if passed from app.js)
-                const byteCharacters = atob(image);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                let base64 = image;
+
+                // Strip data URL prefix if present
+                if (base64.includes(',')) {
+                    base64 = base64.split(',')[1];
                 }
-                const byteArray = new Uint8Array(byteNumbers);
-                imageBlob = new Blob([byteArray], { type: "image/jpeg" });
-            } else if (!(image instanceof Blob)) {
-                imageBlob = new Blob([image], { type: "image/jpeg" });
+
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+
+                imageBlob = new Blob([bytes], { type: "image/jpeg" });
             }
 
             formData.append("image", imageBlob, "meter.jpg");
