@@ -18,50 +18,33 @@ export class ApiService {
         logger.log("API: Sending request to Smart Meter server...");
 
         try {
-            let base64String = image;
+            let imageBlob = image;
 
-            // Convert to base64 if not already a string
-            if (typeof image !== 'string') {
-                // Handle Blob/File
-                if (image instanceof Blob || image instanceof File) {
-                    base64String = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const dataUrl = reader.result;
-                            // Remove "data:image/jpeg;base64," prefix if present
-                            const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-                            resolve(base64);
-                        };
-                        reader.onerror = reject;
-                        reader.readAsDataURL(image);
-                    });
+            // Convert Base64 string to Blob if necessary
+            if (typeof image === 'string') {
+                const base64Data = image.includes(',') ? image.split(',')[1] : image;
+                const byteCharacters = atob(base64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
                 }
-                // Handle ArrayBuffer/Uint8Array
-                else if (image instanceof ArrayBuffer || image instanceof Uint8Array) {
-                    const bytes = image instanceof ArrayBuffer ? new Uint8Array(image) : image;
-                    let binary = '';
-                    for (let i = 0; i < bytes.length; i++) {
-                        binary += String.fromCharCode(bytes[i]);
-                    }
-                    base64String = btoa(binary);
-                }
-            } else {
-                // Already a string - remove data URL prefix if present
-                if (base64String.includes(',')) {
-                    base64String = base64String.split(',')[1];
-                }
+                const byteArray = new Uint8Array(byteNumbers);
+                imageBlob = new Blob([byteArray], { type: "image/jpeg" });
+            } else if (!(image instanceof Blob)) {
+                imageBlob = new Blob([image], { type: "image/jpeg" });
             }
 
-            // Send as JSON to avoid CORS preflight
+            const formData = new FormData();
+            formData.append("image", imageBlob, "meter.jpg");
+
+            // Send as FormData - Note: Fetch sets boundary automatically
             const response = await fetch(this.API_URL, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
+                    // "Content-Type" is intentionally OMITTED for FormData
                 },
-                body: JSON.stringify({
-                    image: base64String
-                })
+                body: formData
             });
 
             if (!response.ok) {
