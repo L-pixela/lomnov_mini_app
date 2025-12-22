@@ -4,7 +4,7 @@ export class ApiService {
     constructor() {
         // ...
         const env = import.meta.env || {};
-        this.API_URL = env.VITE_API_URL || 'https://serverless.roboflow.com/vandaa/workflows/custom-workflow-2';
+        this.API_URL = env.VITE_API_URL || 'https://extrovertively-unmatching-verlene.ngrok-free.dev/api/smart-meter-reading';
         this.API_KEY = env.VITE_API_KEY;
 
         if (!this.API_KEY) {
