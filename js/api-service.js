@@ -24,20 +24,19 @@ export class ApiService {
             let imageBlob = image;
             if (typeof image === 'string') {
                 let base64 = image;
-
-                // Strip data URL prefix if present
                 if (base64.includes(',')) {
                     base64 = base64.split(',')[1];
                 }
 
                 const binary = atob(base64);
                 const bytes = new Uint8Array(binary.length);
-
                 for (let i = 0; i < binary.length; i++) {
                     bytes[i] = binary.charCodeAt(i);
                 }
 
                 imageBlob = new Blob([bytes], { type: "image/jpeg" });
+            } else if (!(image instanceof Blob)) {
+                imageBlob = new Blob([image], { type: "image/jpeg" });
             }
 
             formData.append("image", imageBlob, "meter.jpg");
@@ -45,7 +44,7 @@ export class ApiService {
             const response = await fetch(this.API_URL, {
                 method: "POST",
                 headers: {
-                    'ngrok-skip-browser-warning': '69420'
+                    "ngrok-skip-browser-warning": "true"
                 },
                 body: formData
             });
