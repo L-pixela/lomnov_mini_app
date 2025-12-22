@@ -2,45 +2,35 @@ import { logger } from './logger.js';
 
 export class ApiService {
     constructor() {
-        // ...
         const env = import.meta.env || {};
-        this.API_URL = env.VITE_API_URL || 'https://extrovertively-unmatching-verlene.ngrok-free.dev/api/smart-meter-reading';
-        this.API_KEY = env.VITE_API_KEY;
-
-        if (!this.API_KEY) {
-            logger.error("VITE_API_KEY is missing!");
-        }
+        this.API_URL = env.VITE_API_URL;
     }
 
-    async sendDetectionRequest(base64Image) {
-        if (!base64Image) {
-            logger.error("No image data provided to API");
+    /**
+     * @param {Blob | File | Uint8Array | ArrayBuffer} image
+     */
+    async sendDetectionRequest(image) {
+        if (!image) {
+            logger.error("No image provided to API");
             return;
         }
 
-        logger.log(`API: Sending request to Roboflow...`);
+        logger.log("API: Sending request to Smart Meter server...");
 
         try {
-            // 1. Build the CORRECT request body for Serverless API
-            const requestBody = {
-                api_key: this.API_KEY,
-                inputs: {
-                    "image": {
-                        "type": "base64",
-                        "value": base64Image
-                    }
-                }
-            };
+            const formData = new FormData();
 
-            // 2. Construct the URL with API key as a query parameter
-            const urlWithKey = `${this.API_URL}`;
+            // Ensure it's a Blob
+            const imageBlob =
+                image instanceof Blob
+                    ? image
+                    : new Blob([image], { type: "image/jpeg" });
 
-            const response = await fetch(urlWithKey, { // Use the new URL
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody) // Send the simpler body
+            formData.append("image", imageBlob, "meter.jpg");
+
+            const response = await fetch(this.API_URL, {
+                method: "POST",
+                body: formData // ❗ no Content-Type header for FormData
             });
 
             if (!response.ok) {
@@ -51,6 +41,7 @@ export class ApiService {
 
             const result = await response.json();
             logger.log("API: Response received");
+
             return this.formatResponse(result);
 
         } catch (error) {
@@ -60,77 +51,10 @@ export class ApiService {
     }
 
     formatResponse(apiResult) {
-        /*
-        Target structure:
-        {
-            "outputs": [
-                {
-                    "predictions": {
-                        "predictions": [ { ... }, ... ]
-                    }
-                }
-            ]
-        }
-        */
-
-        let detections = [];
-
-        // 1. Try specific user format
-        try {
-            if (apiResult.outputs && apiResult.outputs.length > 0) {
-                const output = apiResult.outputs[0];
-                if (output.predictions && output.predictions.predictions) {
-                    detections = output.predictions.predictions;
-                }
-            }
-        } catch (e) {
-            console.warn("ApiService: Error parsing specifics, trying fallbacks", e);
-        }
-
-        // 2. Fallbacks (if above failed or empty)
-        if (detections.length === 0) {
-            const possibleKeys = ['predictions', 'output', 'results', 'data'];
-            for (const key of possibleKeys) {
-                if (Array.isArray(apiResult[key])) {
-                    detections = apiResult[key];
-                    break;
-                }
-            }
-        }
-
-        const formattedDetections = detections.map(d => {
-            // App expects: { label, confidence, box: [x, y, w, h] }
-            // API provides: x, y (center usually?), width, height, class, confidence
-
-            // Note: Roboflow often gives center_x, center_y. 
-            // If the user's JSON shows x=501, width=254, let's assume it might be center or top-left.
-            // Standard Roboflow is center.
-
-            let x = d.x;
-            let y = d.y;
-
-            // Convert to top-left for Canvas drawing if it seems to be center
-            // (Heuristic: if x > width/2, likely center. If x < width/2 could be top-left. 
-            // Safe bet with Roboflow is always Center).
-
-            if (d.x !== undefined && d.width !== undefined) {
-                x = d.x - (d.width / 2);
-                y = d.y - (d.height / 2);
-            }
-
-            return {
-                label: d.class || d.label || 'unknown',
-                confidence: d.confidence || 0,
-                box: [x, y, d.width, d.height]
-            };
-        });
-
+        // Adapt this to whatever your Flask API returns
         return {
             success: true,
-            detections: formattedDetections,
-            message: "Objects detected"
+            data: apiResult
         };
     }
-
-
 }
