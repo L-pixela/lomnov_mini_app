@@ -39,6 +39,9 @@ export class ApiService {
 
             const response = await fetch(this.API_URL, {
                 method: "POST",
+                headers: {
+                    'ngrok-skip-browser-warning': '69420'
+                },
                 body: formData
             });
 
