@@ -11,20 +11,28 @@ class MeterStorageService {
 
     // Save water meter data
     static saveWaterData(ocrResponse, imageUrl, meterType = 'water') {
+        // Log the raw OCR response for debugging
+        logger.log('saveWaterData - Raw OCR response:', ocrResponse);
+        logger.log('saveWaterData - Reading value:', ocrResponse.reading);
+        logger.log('saveWaterData - Reading type:', typeof ocrResponse.reading);
+
         // Extract data from OCR response
         // Use reading_confidence first, fallback to meter_confidence
         const readingConfidence = ocrResponse.reading_confidence !== undefined
             ? ocrResponse.reading_confidence
             : (ocrResponse.meter_confidence || 0);
 
-        // Format reading: keep as string, or convert to decimal format if needed
-        const reading = ocrResponse.reading || "0.00";
+        // IMPORTANT: Keep reading as exact string from OCR, don't convert
+        const reading = ocrResponse.reading ? String(ocrResponse.reading) : "0.00";
+
+        logger.log('saveWaterData - Extracted reading:', reading);
+        logger.log('saveWaterData - Reading confidence:', readingConfidence);
 
         // Format accuracy to 4 decimal places as string
         const accuracy = readingConfidence.toFixed(4);
 
         const data = {
-            meter: reading.toString(),           // Ensure string format
+            meter: reading,                       // Keep as string exactly as received
             accuracy: accuracy,                   // Already string with 4 decimals
             imageUrl: imageUrl,
             meterType: meterType,
@@ -32,27 +40,36 @@ class MeterStorageService {
             rawOCR: ocrResponse // Store raw response for debugging
         };
 
+        logger.log('saveWaterData - Final data to save:', data);
         localStorage.setItem(this.STORAGE_KEYS.WATER_DATA, JSON.stringify(data));
-        logger.log('Water data saved:', data);
+        logger.log('Water data saved successfully');
         return data;
     }
 
     // Save electricity meter data
     static saveElectricityData(ocrResponse, imageUrl, meterType = 'electricity') {
+        // Log the raw OCR response for debugging
+        logger.log('saveElectricityData - Raw OCR response:', ocrResponse);
+        logger.log('saveElectricityData - Reading value:', ocrResponse.reading);
+        logger.log('saveElectricityData - Reading type:', typeof ocrResponse.reading);
+
         // Extract data from OCR response
         // Use reading_confidence first, fallback to meter_confidence
         const readingConfidence = ocrResponse.reading_confidence !== undefined
             ? ocrResponse.reading_confidence
             : (ocrResponse.meter_confidence || 0);
 
-        // Format reading: keep as string, or convert to decimal format if needed
-        const reading = ocrResponse.reading || "0.00";
+        // IMPORTANT: Keep reading as exact string from OCR, don't convert
+        const reading = ocrResponse.reading ? String(ocrResponse.reading) : "0.00";
+
+        logger.log('saveElectricityData - Extracted reading:', reading);
+        logger.log('saveElectricityData - Reading confidence:', readingConfidence);
 
         // Format accuracy to 4 decimal places as string
         const accuracy = readingConfidence.toFixed(4);
 
         const data = {
-            meter: reading.toString(),           // Ensure string format
+            meter: reading,                       // Keep as string exactly as received
             accuracy: accuracy,                   // Already string with 4 decimals
             imageUrl: imageUrl,
             meterType: meterType,
@@ -60,8 +77,9 @@ class MeterStorageService {
             rawOCR: ocrResponse
         };
 
+        logger.log('saveElectricityData - Final data to save:', data);
         localStorage.setItem(this.STORAGE_KEYS.ELECTRICITY_DATA, JSON.stringify(data));
-        logger.log('Electricity data saved:', data);
+        logger.log('Electricity data saved successfully');
         return data;
     }
 
@@ -180,8 +198,13 @@ export class ApiService {
      * Format OCR response for new API format
      */
     formatOCRResponse(apiResult) {
+        // Log what we received from API
+        logger.log('formatOCRResponse - Raw API result:', apiResult);
+        logger.log('formatOCRResponse - Reading from API:', apiResult.reading);
+        logger.log('formatOCRResponse - Reading confidence from API:', apiResult.reading_confidence);
+
         // New API returns direct object, not array
-        return {
+        const formatted = {
             success: true,
             reading: apiResult.reading || "0.00",
             reading_confidence: apiResult.reading_confidence || 0,
@@ -189,6 +212,9 @@ export class ApiService {
             meter_type: apiResult.meter_type || 'unknown',
             raw: apiResult
         };
+
+        logger.log('formatOCRResponse - Formatted response:', formatted);
+        return formatted;
     }
 
     /**
