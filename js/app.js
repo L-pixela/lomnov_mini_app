@@ -10,61 +10,73 @@ tg.ready();
 
 // DOM Elements
 const videoEl = document.getElementById('camera-stream');
-const uiOverlay = document.querySelector('.camera-overlay');
-const scanLine = document.querySelector('.scan-line');
 const captureBtn = document.getElementById('capture-btn');
 const statusBadge = document.createElement('div');
-const progressBar = document.createElement('div'); // Add progress bar
 
 // Setup Status Badge
 statusBadge.className = 'status-badge';
 statusBadge.innerText = 'Ready';
-document.querySelector('.camera-view').appendChild(statusBadge);
 
-// Setup Progress Bar
+// Find where to append status badge
+const cameraView = document.querySelector('.camera-view');
+if (cameraView) {
+    cameraView.appendChild(statusBadge);
+}
+
+// Create progress bar wrapper
+const progressBar = document.createElement('div');
 progressBar.className = 'progress-bar';
 progressBar.innerHTML = `
     <div class="progress-step" data-step="water">1. Water</div>
     <div class="progress-step" data-step="electricity">2. Electricity</div>
     <div class="progress-step" data-step="submit">3. Submit</div>
 `;
-document.querySelector('.camera-container').insertBefore(progressBar, document.querySelector('.camera-view'));
+
+// Find camera container and insert progress bar
+const cameraContainer = document.querySelector('.camera-container');
+if (cameraContainer) {
+    // Insert progress bar at the beginning
+    cameraContainer.insertBefore(progressBar, cameraContainer.firstChild);
+}
 
 // Modules
 const camera = new Camera(videoEl);
 const processor = new FrameProcessor();
 const api = new ApiService();
 const overlayCanvas = document.getElementById('overlay-canvas');
-const overlayCtx = overlayCanvas.getContext('2d');
+const overlayCtx = overlayCanvas?.getContext('2d') || null;
 
 // State
 let isProcessing = false;
 let currentStep = 0; // 0 = water, 1 = electricity, 2 = submit
-let chatId = tg.initDataUnsafe.user.id.toString();
+let chatId = tg.initDataUnsafe?.user?.id?.toString() || 'unknown';
 
 // Check for existing data on startup
 function checkExistingData() {
-    const status = api.getProgressStatus ? api.getProgressStatus() : null;
+    try {
+        const status = api.getProgressStatus ? api.getProgressStatus() : null;
 
-    if (status && status.waterCompleted && !status.electricityCompleted) {
-        // Resume from electricity step
-        currentStep = 1;
-        updateUIForStep(1);
-        logger.log('Resuming: Water meter already captured');
-        return true;
-    } else if (status && status.isComplete) {
-        // Both completed, ready to submit
-        currentStep = 2;
-        updateUIForStep(2);
-        logger.log('Resuming: Both meters captured, ready to submit');
-        return true;
+        if (status && status.waterCompleted && !status.electricityCompleted) {
+            // Resume from electricity step
+            currentStep = 1;
+            updateUIForStep(1);
+            logger.log('Resuming: Water meter already captured');
+            return true;
+        } else if (status && status.isComplete) {
+            // Both completed, ready to submit
+            currentStep = 2;
+            updateUIForStep(2);
+            logger.log('Resuming: Both meters captured, ready to submit');
+            return true;
+        }
+    } catch (error) {
+        logger.error('Error checking existing data:', error);
     }
-
     return false;
 }
 
 function resizeCanvas() {
-    if (!videoEl.videoWidth || !videoEl.videoHeight) return;
+    if (!videoEl?.videoWidth || !videoEl?.videoHeight || !overlayCanvas) return;
     overlayCanvas.width = videoEl.videoWidth;
     overlayCanvas.height = videoEl.videoHeight;
 }
@@ -125,12 +137,13 @@ async function startApp() {
         logger.error(`App Error: ${e.message}`);
         statusBadge.innerText = `Error: ${e.message.substring(0, 30)}...`;
         statusBadge.style.color = '#ff7675';
-        statusBadge.innerText = 'Camera Error';
         statusBadge.style.background = 'rgba(231, 76, 60, 0.8)';
     }
 }
 
 function setupCaptureHandler() {
+    if (!captureBtn) return;
+
     captureBtn.onclick = async () => {
         if (isProcessing || !camera.isPlaying()) return;
 
@@ -172,7 +185,7 @@ function setupCaptureHandler() {
         } catch (err) {
             handleCaptureError(err);
         } finally {
-            isProcessing = false;
+            captureBtn.disabled = false;
         }
     };
 }
@@ -182,29 +195,8 @@ async function processWaterMeter(imageBase64) {
         statusBadge.innerText = 'Processing water meter...';
         statusBadge.style.color = '#74b9ff';
 
-        // Use the new method that saves to storage
-        let result;
-        if (api.processAndSaveWaterMeter) {
-            // Use storage-enabled method
-            result = await api.processAndSaveWaterMeter(imageBase64, chatId);
-        } else {
-            // Fallback: use existing method but save to storage
-            const ocrResponse = await api.sendDetectionRequest(imageBase64);
-            const imageUrl = await api.uploadImageToStorage(imageBase64, chatId, 'water');
-
-            // Save to storage manually
-            saveWaterDataToStorage(ocrResponse, imageUrl);
-
-            result = {
-                success: true,
-                message: "Water meter processed",
-                data: {
-                    meter: ocrResponse.detections?.[0]?.text || "0.00",
-                    accuracy: (ocrResponse.detections?.[0]?.confidence || 0).toFixed(2),
-                    imageUrl: imageUrl
-                }
-            };
-        }
+        // Use the storage-enabled method
+        const result = await api.processAndSaveWaterMeter(imageBase64, chatId);
 
         // OCR feedback
         await handleDetectionResult(imageBase64);
@@ -217,7 +209,7 @@ async function processWaterMeter(imageBase64) {
         statusBadge.style.color = '#55efc4';
 
         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-        logger.log(`Water meter captured: ${result.data?.meter || 'N/A'}`);
+        logger.log(`Water meter captured: ${result.meterValue || 'N/A'}`);
 
     } catch (error) {
         throw new Error(`Water meter processing failed: ${error.message}`);
@@ -229,29 +221,8 @@ async function processElectricityMeter(imageBase64) {
         statusBadge.innerText = 'Processing electricity meter...';
         statusBadge.style.color = '#fdcb6e';
 
-        // Use the new method that saves to storage
-        let result;
-        if (api.processAndSaveElectricityMeter) {
-            result = await api.processAndSaveElectricityMeter(imageBase64);
-        } else {
-            // Fallback method
-            const chatId = api.getProgressStatus?.().chatId || window.chatId;
-            const ocrResponse = await api.sendDetectionRequest(imageBase64);
-            const imageUrl = await api.uploadImageToStorage(imageBase64, chatId, 'electricity');
-
-            // Save to storage
-            saveElectricityDataToStorage(ocrResponse, imageUrl);
-
-            result = {
-                success: true,
-                message: "Electricity meter processed",
-                data: {
-                    meter: ocrResponse.detections?.[0]?.text || "0.00",
-                    accuracy: (ocrResponse.detections?.[0]?.confidence || 0).toFixed(2),
-                    imageUrl: imageUrl
-                }
-            };
-        }
+        // Use the storage-enabled method
+        const result = await api.processAndSaveElectricityMeter(imageBase64);
 
         // OCR feedback
         await handleDetectionResult(imageBase64);
@@ -264,7 +235,7 @@ async function processElectricityMeter(imageBase64) {
         statusBadge.style.color = '#00b894';
 
         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-        logger.log(`Electricity meter captured: ${result.data?.meter || 'N/A'}`);
+        logger.log(`Electricity meter captured: ${result.meterValue || 'N/A'}`);
 
     } catch (error) {
         throw new Error(`Electricity meter processing failed: ${error.message}`);
@@ -277,15 +248,8 @@ async function submitBothReadings() {
         statusBadge.style.color = '#a29bfe';
         captureBtn.disabled = true;
 
-        let result;
-        if (api.submitFromStorage) {
-            // Use storage method
-            result = await api.submitFromStorage();
-        } else {
-            // Fallback: get data from storage and submit
-            const payload = buildPayloadFromStorage();
-            result = await api.sendNotification(payload);
-        }
+        // Use storage method
+        const result = await api.submitFromStorage();
 
         if (result.success) {
             // SUCCESS
@@ -297,19 +261,17 @@ async function submitBothReadings() {
             if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
             // Show summary
-            if (tg.showAlert && result.result) {
+            if (tg.showAlert && result.payload) {
                 tg.showAlert(
                     `✅ Submitted Successfully!\n\n` +
-                    `Water: ${result.result.water_meter}\n` +
-                    `Electricity: ${result.result.electricity_meter}`
+                    `Water: ${result.payload.water_meter}\n` +
+                    `Electricity: ${result.payload.electricity_meter}`
                 );
             }
 
             // Change button to close app
             captureBtn.onclick = () => {
                 if (tg.close) {
-                    // Clear storage before closing
-                    if (api.resetStorage) api.resetStorage();
                     tg.close();
                 }
             };
@@ -319,7 +281,6 @@ async function submitBothReadings() {
             // Auto-close after 5 seconds
             setTimeout(() => {
                 if (tg.close) {
-                    if (api.resetStorage) api.resetStorage();
                     tg.close();
                 }
             }, 5000);
@@ -360,6 +321,8 @@ async function handleDetectionResult(imageBase64) {
 }
 
 function drawDetectionBoxes(detections) {
+    if (!overlayCtx || !overlayCanvas) return;
+
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
     detections.forEach(det => {
@@ -397,8 +360,6 @@ function handleCaptureError(err) {
 
     if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
 
-    captureBtn.disabled = false;
-
     // Keep appropriate button state
     updateUIForStep(currentStep);
 
@@ -411,58 +372,20 @@ function handleCaptureError(err) {
     }, 3000);
 }
 
-// Manual storage methods (if ApiService doesn't have them)
-function saveWaterDataToStorage(ocrResponse, imageUrl) {
-    const waterData = {
-        meter: ocrResponse.detections?.[0]?.text || "0.00",
-        accuracy: (ocrResponse.detections?.[0]?.confidence || 0).toFixed(2),
-        imageUrl: imageUrl,
-        timestamp: Date.now()
-    };
-    localStorage.setItem('water_meter_data', JSON.stringify(waterData));
-    localStorage.setItem('meter_chat_id', chatId);
-}
-
-function saveElectricityDataToStorage(ocrResponse, imageUrl) {
-    const electricityData = {
-        meter: ocrResponse.detections?.[0]?.text || "0.00",
-        accuracy: (ocrResponse.detections?.[0]?.confidence || 0).toFixed(2),
-        imageUrl: imageUrl,
-        timestamp: Date.now()
-    };
-    localStorage.setItem('electricity_meter_data', JSON.stringify(electricityData));
-}
-
-function buildPayloadFromStorage() {
-    const chatId = localStorage.getItem('meter_chat_id');
-    const waterData = JSON.parse(localStorage.getItem('water_meter_data') || '{}');
-    const electricityData = JSON.parse(localStorage.getItem('electricity_meter_data') || '{}');
-
-    return {
-        result: {
-            chat_id: chatId || window.chatId,
-            water_meter: waterData.meter || "0.00",
-            water_accuracy: waterData.accuracy || "0.00",
-            electricity_meter: electricityData.meter || "0.00",
-            electricity_accuracy: electricityData.accuracy || "0.00",
-            water_image: waterData.imageUrl || "",
-            electricity_image: electricityData.imageUrl || ""
-        }
-    };
-}
-
 // Add reset function
 function resetApp() {
     currentStep = 0;
     isProcessing = false;
 
     // Clear storage
-    localStorage.removeItem('water_meter_data');
-    localStorage.removeItem('electricity_meter_data');
-    localStorage.removeItem('meter_chat_id');
+    if (api.resetStorage) {
+        api.resetStorage();
+    }
 
     // Clear overlay
-    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    if (overlayCtx && overlayCanvas) {
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    }
 
     // Reset UI
     updateUIForStep(0);
@@ -472,14 +395,6 @@ function resetApp() {
 
 // Expose for debugging
 window.resetApp = resetApp;
-window.getCurrentData = () => {
-    return {
-        chatId: localStorage.getItem('meter_chat_id'),
-        waterData: JSON.parse(localStorage.getItem('water_meter_data') || 'null'),
-        electricityData: JSON.parse(localStorage.getItem('electricity_meter_data') || 'null'),
-        currentStep: currentStep
-    };
-};
 
 // Add CSS for progress bar
 const style = document.createElement('style');
