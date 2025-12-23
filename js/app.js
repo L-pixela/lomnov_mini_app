@@ -29,9 +29,10 @@ const overlayCtx = overlayCanvas.getContext('2d');
 
 // State
 let isProcessing = false;
-let capturedResults = []; // Store completed meter readings
-let currentStep = 0; // 0 = waiting, 1 = water done, 2 = electricity done
-let tenantId = tg.initDataUnsafe.user.id;
+let waterImageData = null;
+let electricityImageData = null;
+let currentStep = 0; // 0 = water, 1 = electricity
+let chatId = tg.initDataUnsafe.user.id.toString(); // Get chat_id from Telegram
 
 function resizeCanvas() {
     if (!videoEl.videoWidth || !videoEl.videoHeight) return;
@@ -65,9 +66,6 @@ function setupManualCapture() {
     captureBtn.classList.add('active');
     statusBadge.innerText = 'Ready to Capture Water Meter';
 
-    // Store original onclick for reset
-    const originalOnClick = captureBtn.onclick;
-
     captureBtn.onclick = async () => {
         if (isProcessing || !camera.isPlaying()) return;
 
@@ -92,81 +90,30 @@ function setupManualCapture() {
             const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
             const rawBase64 = dataUrl.split(',')[1];
 
-            // 2. DETERMINE METER TYPE
-            const meterType = currentStep === 0 ? 'water' : 'electricity';
-            statusBadge.innerText = `Processing ${meterType} meter...`;
-
-            // 3. GET TENANT INFO (only once, first time)
-            if (!tenantInfo) {
-                statusBadge.innerText = 'Getting tenant information...';
-                const telegramId = tg.initDataUnsafe?.user?.id;
-                if (!telegramId) throw new Error('Telegram user ID not found');
-
-                tenantInfo = await api.getTenantInfo(telegramId.toString());
-                if (!tenantInfo || !tenantInfo.success) {
-                    throw new Error(tenantInfo?.error || 'Tenant not found in system');
-                }
+            // 2. DETERMINE METER TYPE & STORE IMAGE
+            if (currentStep === 0) {
+                // Water meter
+                waterImageData = rawBase64;
+                statusBadge.innerText = 'Water meter captured!';
+            } else {
+                // Electricity meter
+                electricityImageData = rawBase64;
+                statusBadge.innerText = 'Electricity meter captured!';
             }
 
-            // 4. SEND TO OCR FOR METER READING
+            // 3. SEND TO OCR FOR METER READING (optional - you can skip this if not needed for UI)
             statusBadge.innerText = 'Analyzing meter reading...';
             const ocrResponse = await api.sendDetectionRequest(rawBase64);
 
             // Handle visual result
             handleDetectionResult(ocrResponse);
 
-            // Extract meter value
-            let meterValue = '0.00';
-            let confidence = 0;
-
-            if (ocrResponse.success && ocrResponse.detections?.length > 0) {
-                meterValue = ocrResponse.detections[0].text || '0.00';
-                confidence = ocrResponse.detections[0].confidence || 0;
-            }
-
-            // 5. UPLOAD IMAGE TO STORAGE
-            statusBadge.innerText = 'Uploading image to storage...';
-            const imageUrl = await api.uploadImageToStorage(rawBase64, tenantInfo.tenant_id);
-
-            // 6. UPDATE CONSUMPTION IN DATABASE
-            statusBadge.innerText = 'Updating consumption record...';
-
-            const consumptionData = {
-                tenant_id: tenantInfo.tenant_id,
-                room_id: tenantInfo.room_id,
-                landlord_id: tenantInfo.landlord_id,
-                meter_type: meterType,
-                meter_reading: parseFloat(meterValue),
-                accuracy: parseFloat(confidence.toFixed(2)),
-                image_url: imageUrl,
-                submitted_by: tg.initDataUnsafe?.user?.id?.toString() || 'unknown',
-                timestamp: new Date().toISOString()
-            };
-
-            const saveResult = await api.updateConsumption(consumptionData);
-
-            if (!saveResult.success) {
-                throw new Error(saveResult.error || 'Failed to update consumption');
-            }
-
-            // 7. STORE RESULT LOCALLY
-            capturedResults.push({
-                meterType: meterType,
-                reading: meterValue,
-                confidence: confidence,
-                imageUrl: imageUrl,
-                timestamp: new Date().toISOString(),
-                consumptionData: consumptionData
-            });
-
-            sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
-
-            // 8. UPDATE UI AND STATE
+            // Update UI based on current step
             currentStep++;
 
             if (currentStep === 1) {
-                // Water meter done, ready for electricity
-                statusBadge.innerText = `Water meter saved! (${meterValue})`;
+                // Water meter captured, ready for electricity
+                statusBadge.innerText = 'Water captured ✓ Ready for electricity';
                 statusBadge.style.color = '#55efc4';
 
                 captureBtn.innerText = 'Take Electricity Meter Photo';
@@ -174,38 +121,47 @@ function setupManualCapture() {
                 isProcessing = false;
 
                 if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-
-                logger.log(`Water meter processed: ${meterValue}`);
+                logger.log(`Water meter captured`);
 
             } else if (currentStep === 2) {
-                // Both meters done
-                statusBadge.innerText = '✓ Both readings submitted!';
-                statusBadge.style.color = '#00b894';
+                // Both meters captured, submit both
+                statusBadge.innerText = 'Submitting both readings...';
+                statusBadge.style.color = '#fdcb6e';
 
-                captureBtn.innerText = 'Done - Close App';
+                // Submit both readings to backend
+                const result = await api.submitMeterReadings({
+                    chatId: chatId,
+                    waterImage: waterImageData,
+                    electricityImage: electricityImageData
+                });
 
-                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                if (result.success) {
+                    statusBadge.innerText = '✓ Both readings submitted!';
+                    statusBadge.style.color = '#00b894';
 
-                // Show summary and close option
-                const water = capturedResults.find(r => r.meterType === 'water');
-                const electricity = capturedResults.find(r => r.meterType === 'electricity');
+                    captureBtn.innerText = 'Done - Close App';
 
-                if (tg.showAlert) {
-                    tg.showAlert(`✅ Submitted Successfully!\n\nWater: ${water.reading}\nElectricity: ${electricity.reading}`);
+                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+
+                    // Show summary
+                    if (tg.showAlert) {
+                        tg.showAlert(`✅ Submitted Successfully!\n\nWater: ${result.result.water_meter}\nElectricity: ${result.result.electricity_meter}`);
+                    }
+
+                    // Change button to close app
+                    captureBtn.onclick = () => {
+                        if (tg.close) tg.close();
+                    };
+
+                    // Auto-close after 3 seconds
+                    setTimeout(() => {
+                        if (tg.close) tg.close();
+                    }, 3000);
+
+                    logger.log('Both readings submitted:', result);
+                } else {
+                    throw new Error('Failed to submit readings');
                 }
-
-                // Change button to close app
-                captureBtn.onclick = () => {
-                    if (tg.close) tg.close();
-                };
-
-                // Auto-close after 3 seconds
-                setTimeout(() => {
-                    if (tg.close) tg.close();
-                }, 3000);
-
-                logger.log(`Electricity meter processed: ${meterValue}`);
-                logger.log('Both readings completed:', capturedResults);
             }
 
         } catch (err) {
@@ -222,15 +178,14 @@ function setupManualCapture() {
             // Keep appropriate button text
             if (currentStep === 0) {
                 captureBtn.innerText = 'Take Water Meter Photo';
+                statusBadge.innerText = 'Ready to Capture Water Meter';
             } else if (currentStep === 1) {
                 captureBtn.innerText = 'Take Electricity Meter Photo';
+                statusBadge.innerText = 'Ready to Capture Electricity Meter';
             }
 
             // Clear error after 2 seconds
             setTimeout(() => {
-                statusBadge.innerText = currentStep === 0 ?
-                    'Ready to Capture Water Meter' :
-                    'Ready to Capture Electricity Meter';
                 statusBadge.style.color = 'white';
             }, 2000);
         }
@@ -286,10 +241,9 @@ window.addEventListener('beforeunload', () => {
 // Add reset function for debugging
 function resetApp() {
     currentStep = 0;
-    capturedResults = [];
-    tenantInfo = null;
+    waterImageData = null;
+    electricityImageData = null;
     isProcessing = false;
-    sessionStorage.removeItem('scanResults');
     captureBtn.disabled = false;
     captureBtn.innerText = 'Take Water Meter Photo';
     statusBadge.innerText = 'Ready to Capture Water Meter';

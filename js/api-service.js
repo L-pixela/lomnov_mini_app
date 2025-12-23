@@ -7,12 +7,12 @@ export class ApiService {
         // Separate URLs for different services
         this.OCR_API_URL = env.VITE_OCR_API_URL || env.VITE_API_URL; // OCR detection backend
         this.IMAGE_UPLOAD_API = env.VITE_IMAGE_UPLOAD_API; // Image storage service
-        this.MAIN_BACKEND_API = env.VITE_MAIN_BACKEND_API; // Main backend for consumption
+        this.NOTIFICATION_API = env.VITE_NOTIFICATION_API || env.VITE_MAIN_BACKEND_URL; // Notification API
 
         logger.log(`API Services initialized:
           OCR: ${this.OCR_API_URL}
           Image Upload: ${this.IMAGE_UPLOAD_API}
-          Main Backend: ${this.MAIN_BACKEND_API}`);
+          Notification API: ${this.NOTIFICATION_API}`);
     }
 
     /**
@@ -78,16 +78,16 @@ export class ApiService {
     /**
      * Step 2: Upload image to storage service
      * @param {string|Blob} image - Image data (base64 or Blob)
-     * @param {string|number} tenantId - Tenant ID
+     * @param {string} chatId - Telegram chat ID
      * @param {string} meterType - 'water' or 'electricity'
      * @returns {Promise<string>} Image URL from storage
      */
-    async uploadImageToStorage(image, tenantId, meterType = 'water') {
-        if (!image || !tenantId) {
-            throw new Error('Image and tenantId are required');
+    async uploadImageToStorage(image, chatId, meterType = 'water') {
+        if (!image || !chatId) {
+            throw new Error('Image and chatId are required');
         }
 
-        logger.log(`Uploading ${meterType} image for tenant ${tenantId}...`);
+        logger.log(`Uploading ${meterType} image for chat ${chatId}...`);
 
         try {
             let imageBlob = image;
@@ -108,7 +108,7 @@ export class ApiService {
 
             const formData = new FormData();
             formData.append("image", imageBlob, `${meterType}_meter_${Date.now()}.jpg`);
-            formData.append("tenant_id", tenantId.toString());
+            formData.append("chat_id", chatId.toString());
             formData.append("meter_type", meterType);
 
             const response = await fetch(this.IMAGE_UPLOAD_API, {
@@ -141,63 +141,83 @@ export class ApiService {
     }
 
     /**
-     * Step 3: Update consumption in main backend
-     * @param {Object} consumptionData - Consumption data for single meter
-     * @returns {Promise<Object>} Update result
+     * Send notification with meter reading results
+     * @param {Object} resultData - The complete result object
+     * @returns {Promise<Object>} Notification API response
      */
-    async updateConsumption(consumptionData) {
-        if (!consumptionData || typeof consumptionData !== 'object') {
-            throw new Error('Valid consumption data is required');
+    async sendNotification(resultData) {
+        if (!resultData || typeof resultData !== 'object') {
+            throw new Error('Valid result data is required');
         }
 
-        logger.log('Updating consumption in backend...', consumptionData);
+        logger.log('Sending notification to backend...', resultData);
 
         try {
-            const response = await fetch(`${this.MAIN_BACKEND_API}/consumptions`, {
+            const response = await fetch(`${this.NOTIFICATION_API}/notifications/meter-reading`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 },
-                body: JSON.stringify(consumptionData)
+                body: JSON.stringify(resultData)
             });
 
             if (!response.ok) {
                 const errText = await response.text();
-                logger.error(`Update consumption failed: ${response.status} - ${errText}`);
-                throw new Error(`Update failed: ${response.status}`);
+                logger.error(`Notification failed: ${response.status} - ${errText}`);
+                throw new Error(`Notification failed: ${response.status}`);
             }
 
             const result = await response.json();
-            logger.log('Consumption updated successfully', result);
-
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to update consumption');
-            }
+            logger.log('Notification sent successfully', result);
 
             return result;
 
         } catch (error) {
-            logger.error(`Update consumption error: ${error.message}`);
+            logger.error(`Notification error: ${error.message}`);
             throw error;
         }
     }
 
     /**
-     * Complete workflow: OCR → Upload → Build JSON → Update
-     * @param {string} imageBase64 - Captured image
-     * @param {string} telegramId - Telegram user ID
-     * @param {string} meterType - 'water' or 'electricity'
-     * @returns {Promise<Object>} Complete result
+     * Build the complete result object for notification
+     * @param {Object} params - Parameters for building result
+     * @returns {Object} Formatted result object
      */
-    async processMeterReading(imageBase64, telegramId, meterType = 'water') {
+    buildResultObject({
+        chatId,
+        waterMeter = "0.00",
+        waterAccuracy = "0.00",
+        electricityMeter = "0.00",
+        electricityAccuracy = "0.00",
+        waterImage = "",
+        electricityImage = ""
+    }) {
+        // Return exactly the format you specified
+        return {
+            chat_id: chatId.toString(),
+            water_meter: waterMeter,
+            water_accuracy: waterAccuracy,
+            electricity_meter: electricityMeter,
+            electricity_accuracy: electricityAccuracy,
+            water_image: waterImage,
+            electricity_image: electricityImage
+        };
+    }
+
+    /**
+     * Process single meter and return meter data
+     * @param {string} imageBase64 - Captured image
+     * @param {string} chatId - Telegram chat ID
+     * @param {string} meterType - 'water' or 'electricity'
+     * @param {Object} existingData - Optional existing data to merge with
+     * @returns {Promise<Object>} Processed meter data
+     */
+    async processSingleMeter(imageBase64, chatId, meterType = 'water', existingData = null) {
         try {
-            logger.log(`Starting ${meterType} meter processing for user ${telegramId}...`);
+            logger.log(`Processing ${meterType} meter for chat ${chatId}...`);
 
-            // 1. Get tenant info (landlord_id, room_id, etc.)
-            const tenantInfo = await this.getTenantInfo(telegramId);
-
-            // 2. Send to OCR for meter reading
+            // 1. Send to OCR for meter reading
             const ocrResult = await this.sendDetectionRequest(imageBase64);
 
             // Extract meter value from OCR
@@ -209,41 +229,147 @@ export class ApiService {
                 accuracy = ocrResult.detections[0].confidence || 0;
             }
 
-            // 3. Upload image to storage
+            // 2. Upload image to storage
             const imageUrl = await this.uploadImageToStorage(
                 imageBase64,
-                tenantInfo.tenant_id,
+                chatId,
                 meterType
             );
 
-            // 4. Build consumption data JSON
-            const consumptionData = {
-                landlord_id: tenantInfo.landlord_id,
-                chat_id: telegramId,
-                [meterType === 'water' ? 'water_meter' : 'electricity_meter']: meterValue,
-                [meterType === 'water' ? 'water_accuracy' : 'electricity_accuracy']: accuracy.toFixed(2),
-                [meterType === 'water' ? 'water_image' : 'electricity_image']: imageUrl,
-                tenant_id: tenantInfo.tenant_id,
-                room_id: tenantInfo.room_id,
-                submitted_at: new Date().toISOString()
+            // 3. Build meter data
+            const meterData = {
+                chatId: chatId
             };
 
-            logger.log(`Built ${meterType} consumption data:`, consumptionData);
+            // Add meter-specific data
+            if (meterType === 'water') {
+                meterData.waterMeter = meterValue;
+                meterData.waterAccuracy = accuracy.toFixed(2);
+                meterData.waterImage = imageUrl;
+            } else {
+                meterData.electricityMeter = meterValue;
+                meterData.electricityAccuracy = accuracy.toFixed(2);
+                meterData.electricityImage = imageUrl;
+            }
 
-            // 5. Update consumption in main backend
-            const updateResult = await this.updateConsumption(consumptionData);
+            // 4. Merge with existing data if provided
+            const mergedData = existingData ?
+                { ...existingData, ...meterData } :
+                meterData;
+
+            logger.log(`Processed ${meterType} data:`, mergedData);
 
             return {
                 success: true,
                 meterType: meterType,
                 meterValue: meterValue,
+                accuracy: accuracy.toFixed(2),
                 imageUrl: imageUrl,
-                consumptionData: consumptionData,
-                updateResult: updateResult
+                meterData: mergedData
             };
 
         } catch (error) {
-            logger.error(`Process meter reading error: ${error.message}`);
+            logger.error(`Process ${meterType} meter error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Main method to submit meter readings
+     * @param {Object} params - Submission parameters
+     * @param {string} params.chatId - Telegram chat ID
+     * @param {string} [params.waterImage] - Water meter image (optional)
+     * @param {string} [params.electricityImage] - Electricity meter image (optional)
+     * @returns {Promise<Object>} Complete result with notification response
+     */
+    async submitMeterReadings({ chatId, waterImage, electricityImage }) {
+        if (!chatId) {
+            throw new Error('Chat ID is required');
+        }
+
+        if (!waterImage && !electricityImage) {
+            throw new Error('At least one meter image is required');
+        }
+
+        try {
+            let meterData = {};
+
+            if (waterImage && electricityImage) {
+                // Process both meters
+                const waterResult = await this.processSingleMeter(
+                    waterImage,
+                    chatId,
+                    'water'
+                );
+
+                const electricityResult = await this.processSingleMeter(
+                    electricityImage,
+                    chatId,
+                    'electricity',
+                    waterResult.meterData
+                );
+
+                meterData = electricityResult.meterData;
+
+            } else if (waterImage) {
+                // Process only water meter
+                const waterResult = await this.processSingleMeter(
+                    waterImage,
+                    chatId,
+                    'water'
+                );
+                meterData = waterResult.meterData;
+
+            } else {
+                // Process only electricity meter
+                const electricityResult = await this.processSingleMeter(
+                    electricityImage,
+                    chatId,
+                    'electricity'
+                );
+                meterData = electricityResult.meterData;
+            }
+
+            // Build the final result object
+            const finalResult = this.buildResultObject(meterData);
+
+            // Send notification to backend
+            const notificationResponse = await this.sendNotification(finalResult);
+
+            return {
+                success: true,
+                notificationSent: true,
+                result: finalResult,
+                notificationResponse: notificationResponse
+            };
+
+        } catch (error) {
+            logger.error(`Submit meter readings error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Alternative: Submit already processed data
+     * @param {Object} meterData - Pre-processed meter data
+     * @returns {Promise<Object>} Notification response
+     */
+    async submitProcessedData(meterData) {
+        try {
+            // Build the result object
+            const resultObject = this.buildResultObject(meterData);
+
+            // Send notification
+            const response = await this.sendNotification(resultObject);
+
+            return {
+                success: true,
+                result: resultObject,
+                notificationResponse: response
+            };
+
+        } catch (error) {
+            logger.error(`Submit processed data error: ${error.message}`);
             throw error;
         }
     }
