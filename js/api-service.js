@@ -10,27 +10,42 @@ class MeterStorageService {
     };
 
     // Save water meter data
-    static saveWaterData(meterData, imageUrl) {
-        // Extract values from meterData or use provided values
+    static saveWaterData(ocrResponse, imageUrl, meterType = 'water') {
+        // Extract data from OCR response
+        const reading = ocrResponse.reading || "0.00";
+        const accuracy = ocrResponse.reading_confidence || ocrResponse.meter_confidence || 0;
+
         const data = {
-            meter: meterData.waterMeter || "0.00",
-            accuracy: meterData.waterAccuracy || "0.00",
-            imageUrl: imageUrl || meterData.waterImage || "",
-            timestamp: Date.now()
+            meter: reading,
+            accuracy: accuracy.toFixed(4), // Keep 4 decimal places for accuracy
+            imageUrl: imageUrl,
+            meterType: meterType,
+            timestamp: Date.now(),
+            rawOCR: ocrResponse // Store raw response for debugging
         };
+
         localStorage.setItem(this.STORAGE_KEYS.WATER_DATA, JSON.stringify(data));
+        logger.log('Water data saved:', data);
         return data;
     }
 
     // Save electricity meter data
-    static saveElectricityData(meterData, imageUrl) {
+    static saveElectricityData(ocrResponse, imageUrl, meterType = 'electricity') {
+        // Extract data from OCR response
+        const reading = ocrResponse.reading || "0.00";
+        const accuracy = ocrResponse.reading_confidence || ocrResponse.meter_confidence || 0;
+
         const data = {
-            meter: meterData.electricityMeter || "0.00",
-            accuracy: meterData.electricityAccuracy || "0.00",
-            imageUrl: imageUrl || meterData.electricityImage || "",
-            timestamp: Date.now()
+            meter: reading,
+            accuracy: accuracy.toFixed(4),
+            imageUrl: imageUrl,
+            meterType: meterType,
+            timestamp: Date.now(),
+            rawOCR: ocrResponse
         };
+
         localStorage.setItem(this.STORAGE_KEYS.ELECTRICITY_DATA, JSON.stringify(data));
+        logger.log('Electricity data saved:', data);
         return data;
     }
 
@@ -88,185 +103,8 @@ export class ApiService {
     }
 
     /**
-     * Process water meter and save to storage
-     */
-    async processAndSaveWaterMeter(imageBase64, chatId) {
-        try {
-            logger.log(`Processing water meter for chat ${chatId}...`);
-
-            // 1. Save chat ID first
-            this.storage.saveChatId(chatId);
-
-            // 2. Process water meter
-            const result = await this.processSingleMeter(
-                imageBase64,
-                chatId,
-                'water'
-            );
-
-            // 3. Save water data to storage
-            if (result.success) {
-                this.storage.saveWaterData(result.meterData, result.imageUrl);
-            }
-
-            logger.log(`Water meter processed and saved: ${result.meterData?.waterMeter || 'N/A'}`);
-
-            return {
-                success: true,
-                message: "Water meter processed and saved",
-                meterValue: result.meterValue,
-                accuracy: result.accuracy,
-                imageUrl: result.imageUrl,
-                meterData: result.meterData,
-                nextStep: "electricity"
-            };
-
-        } catch (error) {
-            logger.error(`Water meter processing failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Process electricity meter and save to storage
-     */
-    async processAndSaveElectricityMeter(imageBase64) {
-        try {
-            // Get chat ID from storage
-            const chatId = this.storage.getChatId();
-            if (!chatId) {
-                throw new Error("Chat ID not found. Please process water meter first.");
-            }
-
-            logger.log(`Processing electricity meter for chat ${chatId}...`);
-
-            // Process electricity meter
-            const result = await this.processSingleMeter(
-                imageBase64,
-                chatId,
-                'electricity'
-            );
-
-            // Save electricity data
-            if (result.success) {
-                this.storage.saveElectricityData(result.meterData, result.imageUrl);
-            }
-
-            logger.log(`Electricity meter processed and saved: ${result.meterData?.electricityMeter || 'N/A'}`);
-
-            return {
-                success: true,
-                message: "Electricity meter processed and saved",
-                meterValue: result.meterValue,
-                accuracy: result.accuracy,
-                imageUrl: result.imageUrl,
-                meterData: result.meterData,
-                bothComplete: this.storage.isComplete()
-            };
-
-        } catch (error) {
-            logger.error(`Electricity meter processing failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Build final payload from stored data
-     */
-    buildFinalPayloadFromStorage() {
-        const chatId = this.storage.getChatId();
-        const waterData = this.storage.getWaterData();
-        const electricityData = this.storage.getElectricityData();
-
-        if (!chatId) {
-            throw new Error("Chat ID not found in storage");
-        }
-
-        if (!waterData && !electricityData) {
-            throw new Error("No meter data found in storage");
-        }
-
-        // Build the payload in the required format
-        const payload = {
-            result: {
-                chat_id: chatId.toString(),
-                water_meter: waterData?.meter || "0.00",
-                water_accuracy: waterData?.accuracy || "0.00",
-                electricity_meter: electricityData?.meter || "0.00",
-                electricity_accuracy: electricityData?.accuracy || "0.00",
-                water_image: waterData?.imageUrl || "",
-                electricity_image: electricityData?.imageUrl || ""
-            }
-        };
-
-        logger.log("Final payload built from storage:", payload);
-        return payload;
-    }
-
-    /**
-     * Submit final payload from stored data
-     */
-    async submitFromStorage() {
-        try {
-            // 1. Build final payload from storage
-            const finalPayload = this.buildFinalPayloadFromStorage();
-
-            // 2. Send notification
-            const notificationResponse = await this.sendNotification(finalPayload);
-
-            // 3. Clear storage after successful submission
-            this.storage.clearAll();
-
-            return {
-                success: true,
-                message: "Meter readings submitted successfully",
-                payload: finalPayload.result, // Return inner result for UI
-                notificationResponse: notificationResponse,
-                fullPayload: finalPayload
-            };
-
-        } catch (error) {
-            logger.error(`Submission from storage failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Get current progress status
-     */
-    getProgressStatus() {
-        const chatId = this.storage.getChatId();
-        const waterData = this.storage.getWaterData();
-        const electricityData = this.storage.getElectricityData();
-
-        return {
-            chatId: chatId,
-            waterCompleted: !!waterData,
-            electricityCompleted: !!electricityData,
-            waterMeter: waterData?.meter,
-            electricityMeter: electricityData?.meter,
-            isComplete: this.storage.isComplete()
-        };
-    }
-
-    /**
-     * Reset/clear all stored data
-     */
-    resetStorage() {
-        this.storage.clearAll();
-        return { success: true, message: "Storage cleared" };
-    }
-
-    // ========== KEEP ALL YOUR EXISTING METHODS BELOW ==========
-    // (sendDetectionRequest, uploadImageToStorage, sendNotification, 
-    // buildResultObject, processSingleMeter, submitMeterReadings, 
-    // submitProcessedData, formatOCRResponse)
-    // They should remain exactly as you have them
-
-    /**
-     * Step 1: Send image to OCR API for meter reading
-     * @param {string | Blob | File | Uint8Array | ArrayBuffer} image
-     * @returns {Promise<Object>} OCR response with meter reading
+     * Send image to OCR API for meter reading
+     * UPDATED to handle new response format
      */
     async sendDetectionRequest(image) {
         if (!image) {
@@ -311,10 +149,9 @@ export class ApiService {
             }
 
             const result = await response.json();
-            logger.log("OCR API: Meter reading received");
+            logger.log("OCR API Response:", result);
 
-            logger.log(this.formatOCRResponse(result));
-
+            // Format the new response structure
             return this.formatOCRResponse(result);
 
         } catch (error) {
@@ -324,11 +161,22 @@ export class ApiService {
     }
 
     /**
-     * Step 2: Upload image to storage service
-     * @param {string|Blob} image - Image data (base64 or Blob)
-     * @param {string} chatId - Telegram chat ID
-     * @param {string} meterType - 'water' or 'electricity'
-     * @returns {Promise<string>} Image URL from storage
+     * Format OCR response for new API format
+     */
+    formatOCRResponse(apiResult) {
+        // New API returns direct object, not array
+        return {
+            success: true,
+            reading: apiResult.reading || "0.00",
+            reading_confidence: apiResult.reading_confidence || 0,
+            meter_confidence: apiResult.meter_confidence || 0,
+            meter_type: apiResult.meter_type || 'unknown',
+            raw: apiResult
+        };
+    }
+
+    /**
+     * Upload image to storage service
      */
     async uploadImageToStorage(image, chatId, meterType = 'water') {
         if (!image || !chatId) {
@@ -387,9 +235,153 @@ export class ApiService {
     }
 
     /**
-     * Send notification with meter reading results wrapped in "result" object
-     * @param {Object} resultData - The complete result object wrapped in "result"
-     * @returns {Promise<Object>} Notification API response
+     * Process water meter and save to storage
+     */
+    async processAndSaveWaterMeter(imageBase64, chatId) {
+        try {
+            logger.log(`Processing water meter for chat ${chatId}...`);
+
+            // 1. Save chat ID first
+            this.storage.saveChatId(chatId);
+
+            // 2. Send to OCR
+            const ocrResponse = await this.sendDetectionRequest(imageBase64);
+            logger.log('Water OCR Response:', ocrResponse);
+
+            // 3. Upload image
+            const imageUrl = await this.uploadImageToStorage(imageBase64, chatId, 'water');
+            logger.log('Water Image URL:', imageUrl);
+
+            // 4. Save water data to storage
+            const savedData = this.storage.saveWaterData(ocrResponse, imageUrl, 'water');
+
+            // 5. Verify storage
+            const storedData = this.storage.getWaterData();
+            logger.log('Water data after saving:', storedData);
+
+            return {
+                success: true,
+                message: "Water meter processed and saved",
+                meterValue: ocrResponse.reading,
+                accuracy: ocrResponse.reading_confidence || ocrResponse.meter_confidence,
+                imageUrl: imageUrl,
+                ocrResponse: ocrResponse,
+                storedData: savedData,
+                nextStep: "electricity"
+            };
+
+        } catch (error) {
+            logger.error(`Water meter processing failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Process electricity meter and save to storage
+     */
+    async processAndSaveElectricityMeter(imageBase64) {
+        try {
+            // Get chat ID from storage
+            const chatId = this.storage.getChatId();
+            if (!chatId) {
+                throw new Error("Chat ID not found. Please process water meter first.");
+            }
+
+            logger.log(`Processing electricity meter for chat ${chatId}...`);
+
+            // 1. Send to OCR
+            const ocrResponse = await this.sendDetectionRequest(imageBase64);
+            logger.log('Electricity OCR Response:', ocrResponse);
+
+            // 2. Upload image
+            const imageUrl = await this.uploadImageToStorage(imageBase64, chatId, 'electricity');
+            logger.log('Electricity Image URL:', imageUrl);
+
+            // 3. Save electricity data to storage
+            const savedData = this.storage.saveElectricityData(ocrResponse, imageUrl, 'electricity');
+
+            // 4. Verify storage
+            const storedData = this.storage.getElectricityData();
+            logger.log('Electricity data after saving:', storedData);
+
+            return {
+                success: true,
+                message: "Electricity meter processed and saved",
+                meterValue: ocrResponse.reading,
+                accuracy: ocrResponse.reading_confidence || ocrResponse.meter_confidence,
+                imageUrl: imageUrl,
+                ocrResponse: ocrResponse,
+                storedData: savedData,
+                bothComplete: this.storage.isComplete()
+            };
+
+        } catch (error) {
+            logger.error(`Electricity meter processing failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Build final payload from stored data
+     */
+    buildFinalPayloadFromStorage() {
+        const chatId = this.storage.getChatId();
+        const waterData = this.storage.getWaterData();
+        const electricityData = this.storage.getElectricityData();
+
+        if (!chatId) {
+            throw new Error("Chat ID not found in storage");
+        }
+
+        // Build the payload in the EXACT required format
+        const payload = {
+            result: {
+                chat_id: chatId.toString(),
+                water_meter: waterData?.meter || "0.00",
+                water_accuracy: waterData?.accuracy || "0.0000",
+                electricity_meter: electricityData?.meter || "0.00",
+                electricity_accuracy: electricityData?.accuracy || "0.0000",
+                water_image: waterData?.imageUrl || "",
+                electricity_image: electricityData?.imageUrl || ""
+            }
+        };
+
+        logger.log("Final payload built from storage:", payload);
+        return payload;
+    }
+
+    /**
+     * Submit final payload from stored data
+     */
+    async submitFromStorage() {
+        try {
+            // 1. Build final payload from storage
+            const finalPayload = this.buildFinalPayloadFromStorage();
+
+            logger.log('Sending notification with payload:', finalPayload);
+
+            // 2. Send notification
+            const notificationResponse = await this.sendNotification(finalPayload);
+
+            // 3. Clear storage after successful submission
+            this.storage.clearAll();
+
+            return {
+                success: true,
+                message: "Meter readings submitted successfully",
+                payload: finalPayload.result, // Return inner result for UI
+                notificationResponse: notificationResponse,
+                fullPayload: finalPayload
+            };
+
+        } catch (error) {
+            logger.error(`Submission from storage failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Send notification with meter reading results
      */
     async sendNotification(resultData) {
         if (!resultData || typeof resultData !== 'object') {
@@ -426,222 +418,29 @@ export class ApiService {
     }
 
     /**
-     * Build the complete result object for notification, wrapped in "result"
-     * @param {Object} params - Parameters for building result
-     * @returns {Object} Formatted result object with wrapper
+     * Get current progress status
      */
-    buildResultObject({
-        chatId,
-        waterMeter = "0.00",
-        waterAccuracy = "0.00",
-        electricityMeter = "0.00",
-        electricityAccuracy = "0.00",
-        waterImage = "",
-        electricityImage = ""
-    }) {
-        // Return wrapped in "result" object
+    getProgressStatus() {
+        const chatId = this.storage.getChatId();
+        const waterData = this.storage.getWaterData();
+        const electricityData = this.storage.getElectricityData();
+
         return {
-            result: {
-                chat_id: chatId.toString(),
-                water_meter: waterMeter,
-                water_accuracy: waterAccuracy,
-                electricity_meter: electricityMeter,
-                electricity_accuracy: electricityAccuracy,
-                water_image: waterImage,
-                electricity_image: electricityImage
-            }
+            chatId: chatId,
+            waterCompleted: !!waterData,
+            electricityCompleted: !!electricityData,
+            waterMeter: waterData?.meter,
+            electricityMeter: electricityData?.meter,
+            isComplete: this.storage.isComplete()
         };
     }
 
     /**
-     * Process single meter and return meter data
-     * @param {string} imageBase64 - Captured image
-     * @param {string} chatId - Telegram chat ID
-     * @param {string} meterType - 'water' or 'electricity'
-     * @param {Object} existingData - Optional existing data to merge with
-     * @returns {Promise<Object>} Processed meter data
+     * Reset/clear all stored data
      */
-    async processSingleMeter(imageBase64, chatId, meterType = 'water', existingData = null) {
-        try {
-            logger.log(`Processing ${meterType} meter for chat ${chatId}...`);
-
-            // 1. Send to OCR for meter reading
-            const ocrResult = await this.sendDetectionRequest(imageBase64);
-
-            // Extract meter value from OCR
-            let meterValue = '0.00';
-            let accuracy = 0;
-
-            if (ocrResult.success && ocrResult.detections?.length > 0) {
-                meterValue = ocrResult.detections[0].text || '0.00';
-                accuracy = ocrResult.detections[0].confidence || 0;
-            }
-
-            // 2. Upload image to storage
-            const imageUrl = await this.uploadImageToStorage(
-                imageBase64,
-                chatId,
-                meterType
-            );
-
-            // 3. Build meter data
-            const meterData = {
-                chatId: chatId
-            };
-
-            // Add meter-specific data
-            if (meterType === 'water') {
-                meterData.waterMeter = meterValue;
-                meterData.waterAccuracy = accuracy.toFixed(2);
-                meterData.waterImage = imageUrl;
-            } else {
-                meterData.electricityMeter = meterValue;
-                meterData.electricityAccuracy = accuracy.toFixed(2);
-                meterData.electricityImage = imageUrl;
-            }
-
-            // 4. Merge with existing data if provided
-            const mergedData = existingData ?
-                { ...existingData, ...meterData } :
-                meterData;
-
-            logger.log(`Processed ${meterType} data:`, mergedData);
-
-            return {
-                success: true,
-                meterType: meterType,
-                meterValue: meterValue,
-                accuracy: accuracy.toFixed(2),
-                imageUrl: imageUrl,
-                meterData: mergedData
-            };
-
-        } catch (error) {
-            logger.error(`Process ${meterType} meter error: ${error.message}`);
-            throw error;
-        }
+    resetStorage() {
+        this.storage.clearAll();
+        return { success: true, message: "Storage cleared" };
     }
 
-    /**
-     * Main method to submit meter readings
-     * @param {Object} params - Submission parameters
-     * @param {string} params.chatId - Telegram chat ID
-     * @param {string} [params.waterImage] - Water meter image (optional)
-     * @param {string} [params.electricityImage] - Electricity meter image (optional)
-     * @returns {Promise<Object>} Complete result with notification response
-     */
-    async submitMeterReadings({ chatId, waterImage, electricityImage }) {
-        if (!chatId) {
-            throw new Error('Chat ID is required');
-        }
-
-        if (!waterImage && !electricityImage) {
-            throw new Error('At least one meter image is required');
-        }
-
-        try {
-            let meterData = {};
-
-            if (waterImage && electricityImage) {
-                // Process both meters
-                const waterResult = await this.processSingleMeter(
-                    waterImage,
-                    chatId,
-                    'water'
-                );
-
-                const electricityResult = await this.processSingleMeter(
-                    electricityImage,
-                    chatId,
-                    'electricity',
-                    waterResult.meterData
-                );
-
-                meterData = electricityResult.meterData;
-
-            } else if (waterImage) {
-                // Process only water meter
-                const waterResult = await this.processSingleMeter(
-                    waterImage,
-                    chatId,
-                    'water'
-                );
-                meterData = waterResult.meterData;
-
-            } else {
-                // Process only electricity meter
-                const electricityResult = await this.processSingleMeter(
-                    electricityImage,
-                    chatId,
-                    'electricity'
-                );
-                meterData = electricityResult.meterData;
-            }
-
-            // Build the final result object (wrapped in "result")
-            const finalResult = this.buildResultObject(meterData);
-
-            // Send notification to backend
-            const notificationResponse = await this.sendNotification(finalResult);
-
-            return {
-                success: true,
-                notificationSent: true,
-                result: finalResult.result, // Return just the inner result for UI
-                fullPayload: finalResult, // Keep the full payload for debugging
-                notificationResponse: notificationResponse
-            };
-
-        } catch (error) {
-            logger.error(`Submit meter readings error: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Alternative: Submit already processed data
-     * @param {Object} meterData - Pre-processed meter data
-     * @returns {Promise<Object>} Notification response
-     */
-    async submitProcessedData(meterData) {
-        try {
-            // Build the result object (wrapped in "result")
-            const resultObject = this.buildResultObject(meterData);
-
-            // Send notification
-            const response = await this.sendNotification(resultObject);
-
-            return {
-                success: true,
-                result: resultObject.result,
-                fullPayload: resultObject,
-                notificationResponse: response
-            };
-
-        } catch (error) {
-            logger.error(`Submit processed data error: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Format OCR response consistently
-     */
-    formatOCRResponse(apiResult) {
-        let detections = [];
-
-        if (apiResult.detections) {
-            detections = apiResult.detections;
-        } else if (Array.isArray(apiResult)) {
-            detections = apiResult;
-        } else if (apiResult.data && Array.isArray(apiResult.data)) {
-            detections = apiResult.data;
-        }
-
-        return {
-            success: detections.length > 0 || apiResult.success === true,
-            detections: detections,
-            raw: apiResult
-        };
-    }
 }

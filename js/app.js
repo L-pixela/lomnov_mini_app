@@ -205,7 +205,7 @@ async function processWaterMeter(imageBase64) {
         currentStep = 1;
         updateUIForStep(1);
 
-        statusBadge.innerText = 'Water meter captured ✓';
+        statusBadge.innerText = `Water: ${result.meterValue} ✓`;
         statusBadge.style.color = '#55efc4';
 
         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
@@ -231,7 +231,7 @@ async function processElectricityMeter(imageBase64) {
         currentStep = 2;
         updateUIForStep(2);
 
-        statusBadge.innerText = 'Both meters captured ✓ Ready to submit';
+        statusBadge.innerText = `Water: ${api.getProgressStatus()?.waterMeter || '?'} | Elec: ${result.meterValue} ✓`;
         statusBadge.style.color = '#00b894';
 
         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
@@ -299,15 +299,17 @@ async function handleDetectionResult(imageBase64) {
         statusBadge.innerText = 'Analyzing meter reading...';
         const ocrResponse = await api.sendDetectionRequest(imageBase64);
 
-        if (ocrResponse.success && ocrResponse.detections.length > 0) {
-            const detection = ocrResponse.detections[0];
-            const meterValue = detection.text || "N/A";
-            const confidence = (detection.confidence * 100).toFixed(1);
+        if (ocrResponse.success) {
+            const meterValue = ocrResponse.reading || "N/A";
+            const confidence = ((ocrResponse.reading_confidence || ocrResponse.meter_confidence || 0) * 100).toFixed(1);
+            const meterType = ocrResponse.meter_type || 'meter';
 
-            statusBadge.innerText = `Detected: ${meterValue} (${confidence}%)`;
+            statusBadge.innerText = `${meterType}: ${meterValue} (${confidence}%)`;
 
-            // Draw bounding boxes
-            drawDetectionBoxes(ocrResponse.detections);
+            // Update UI with detection (optional bounding boxes if API provides them)
+            if (ocrResponse.raw && ocrResponse.raw.detections) {
+                drawDetectionBoxes(ocrResponse.raw.detections);
+            }
         } else {
             statusBadge.innerText = 'No meter detected';
         }
