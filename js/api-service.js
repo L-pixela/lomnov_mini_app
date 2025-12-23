@@ -6,7 +6,7 @@ export class ApiService {
 
         // Separate URLs for different services
         this.OCR_API_URL = env.VITE_OCR_API_URL || env.VITE_API_URL; // OCR detection backend
-        this.IMAGE_UPLOAD_API = env.VITE_IMAGE_UPLOAD_API; // Image storage service
+        this.IMAGE_UPLOAD_API = env.VITE_UPLOAD_URL; // Image storage service
         this.NOTIFICATION_API = env.VITE_NOTIFICATION_API || env.VITE_MAIN_BACKEND_URL; // Notification API
 
         logger.log(`API Services initialized:
