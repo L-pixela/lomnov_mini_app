@@ -108,8 +108,6 @@ export class ApiService {
 
             const formData = new FormData();
             formData.append("image", imageBlob, `${meterType}_meter_${Date.now()}.jpg`);
-            formData.append("chat_id", chatId.toString());
-            formData.append("meter_type", meterType);
 
             const response = await fetch(this.IMAGE_UPLOAD_API, {
                 method: "POST",
@@ -127,12 +125,12 @@ export class ApiService {
 
             const result = await response.json();
 
-            if (!result.success || !result.image_url) {
+            if (!result.success || !result.url) {
                 throw new Error('Invalid response from image upload service');
             }
 
-            logger.log(`Image uploaded successfully: ${result.image_url}`);
-            return result.image_url;
+            logger.log(`Image uploaded successfully: ${result.url}`);
+            return result.url;
 
         } catch (error) {
             logger.error(`Image upload error: ${error.message}`);
