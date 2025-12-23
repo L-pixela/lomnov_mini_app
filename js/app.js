@@ -1,6 +1,7 @@
 import { Camera } from './camera.js';
 import { FrameProcessor } from './frame-processor.js';
 import { ApiService } from './api-service.js';
+import { logger } from './logger.js';
 
 // Init Telegram WebApp
 const tg = window.Telegram.WebApp;
@@ -43,21 +44,21 @@ function checkExistingData() {
     try {
         const status = api.getProgressStatus ? api.getProgressStatus() : null;
 
-        // logger.log('Checking existing data:', status);
+        logger.log('Checking existing data:', status);
 
         if (status && status.waterCompleted && !status.electricityCompleted) {
             // Resume from electricity step
             currentStep = 1;
             updateUIForStep(1);
-            // logger.log('Resuming: Water meter already captured');
-            // logger.log('Water data:', status.waterMeter);
+            logger.log('Resuming: Water meter already captured');
+            logger.log('Water data:', status.waterMeter);
             return true;
         } else if (status && status.isComplete) {
             // Both completed, ready to submit
             currentStep = 2;
             updateUIForStep(2);
-            // logger.log('Resuming: Both meters captured, ready to submit');
-            // logger.log('Water:', status.waterMeter, 'Electricity:', status.electricityMeter);
+            logger.log('Resuming: Both meters captured, ready to submit');
+            logger.log('Water:', status.waterMeter, 'Electricity:', status.electricityMeter);
             return true;
         }
     } catch (error) {
@@ -114,7 +115,7 @@ async function startApp() {
         // Setup capture handler
         setupCaptureHandler();
 
-        // logger.log(`App started successfully. Chat ID: ${chatId}, Current step: ${currentStep}`);
+        logger.log(`App started successfully. Chat ID: ${chatId}, Current step: ${currentStep}`);
 
     } catch (e) {
         statusBadge.innerText = `Error: ${e.message.substring(0, 30)}...`;
@@ -130,13 +131,13 @@ function setupCaptureHandler() {
         // Debounce check
         const now = Date.now();
         if (now - lastCaptureTime < CAPTURE_COOLDOWN) {
-            // logger.log('Capture blocked: too soon after last capture');
+            logger.log('Capture blocked: too soon after last capture');
             statusBadge.innerText = 'Please wait...';
             return;
         }
 
         if (isProcessing || !camera.isPlaying()) {
-            // logger.log('Capture blocked: already processing or camera not ready');
+            logger.log('Capture blocked: already processing or camera not ready');
             return;
         }
 
@@ -161,7 +162,7 @@ function setupCaptureHandler() {
             const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
             const rawBase64 = dataUrl.split(',')[1];
 
-            // logger.log(`Captured image for step ${currentStep} (${currentStep === 0 ? 'water' : currentStep === 1 ? 'electricity' : 'submit'})`);
+            logger.log(`Captured image for step ${currentStep} (${currentStep === 0 ? 'water' : currentStep === 1 ? 'electricity' : 'submit'})`);
 
             // PROCESS BASED ON CURRENT STEP
             switch (currentStep) {
@@ -195,7 +196,7 @@ async function processWaterMeter(imageBase64) {
         statusBadge.innerText = 'Processing water meter...';
         statusBadge.style.color = '#74b9ff';
 
-        // logger.log('Starting water meter processing...');
+        logger.log('Starting water meter processing...');
 
         // Use the storage-enabled method
         const result = await api.processAndSaveWaterMeter(imageBase64, chatId);
