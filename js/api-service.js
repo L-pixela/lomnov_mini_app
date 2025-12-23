@@ -112,6 +112,7 @@ export class ApiService {
             const response = await fetch(this.IMAGE_UPLOAD_API, {
                 method: "POST",
                 headers: {
+                    "Content-Type": "multipart/form-data",
                     "ngrok-skip-browser-warning": "true"
                 },
                 body: formData
