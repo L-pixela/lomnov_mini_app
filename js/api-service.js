@@ -196,21 +196,27 @@ export class ApiService {
 
     /**
      * Format OCR response for new API format
+     * Python API returns: { success: true, result: { reading, reading_confidence, ... } }
      */
     formatOCRResponse(apiResult) {
         // Log what we received from API
         logger.log('formatOCRResponse - Raw API result:', apiResult);
-        logger.log('formatOCRResponse - Reading from API:', apiResult.reading);
-        logger.log('formatOCRResponse - Reading confidence from API:', apiResult.reading_confidence);
 
-        // New API returns direct object, not array
+        // IMPORTANT: Python API wraps data in 'result' object
+        const data = apiResult.result || apiResult;
+
+        logger.log('formatOCRResponse - Extracted data:', data);
+        logger.log('formatOCRResponse - Reading from API:', data.reading);
+        logger.log('formatOCRResponse - Reading confidence from API:', data.reading_confidence);
+
+        // Format the response
         const formatted = {
             success: true,
-            reading: apiResult.reading || "0.00",
-            reading_confidence: apiResult.reading_confidence || 0,
-            meter_confidence: apiResult.meter_confidence || 0,
-            meter_type: apiResult.meter_type || 'unknown',
-            raw: apiResult
+            reading: data.reading || "0.00",
+            reading_confidence: data.reading_confidence || 0,
+            meter_confidence: data.meter_confidence || 0,
+            meter_type: data.meter_type || 'unknown',
+            raw: apiResult  // Keep original response for debugging
         };
 
         logger.log('formatOCRResponse - Formatted response:', formatted);
