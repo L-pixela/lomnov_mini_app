@@ -37,12 +37,12 @@ export class ApiService {
             const formData = new FormData();
             formData.append("image", imageBlob, "meter.jpg");
 
-            // Send as FormData - Note: Fetch sets boundary automatically
+            // Send as FormData (multipart/form-data)
+            // Browser automatically sets the proper Content-Type with boundary
             const response = await fetch(this.API_URL, {
                 method: "POST",
                 headers: {
                     "ngrok-skip-browser-warning": "true"
-                    // "Content-Type" is intentionally OMITTED for FormData
                 },
                 body: formData
             });

@@ -255,8 +255,10 @@ function setupManualCapture() {
 
         try {
             isProcessing = true;
+            captureBtn.disabled = true; // Visually disable the button
             captureBtn.innerText = 'Processing...';
             statusBadge.innerText = 'Capturing...';
+            statusBadge.style.color = 'white';
 
             if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
@@ -264,48 +266,54 @@ function setupManualCapture() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const video = camera.getVideo();
+            if (!video || video.videoWidth === 0) throw new Error("Video not ready");
+
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // 2. Convert to Base64
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            // 2. Convert to Base64 (to store)
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
             const rawBase64 = dataUrl.split(',')[1];
 
-            // 3. Send to API
-            statusBadge.innerText = 'Analyzing...';
+            // 3. Send to API (Wait for result)
+            statusBadge.innerText = 'Sending to IoT Server...';
             const apiResponse = await api.sendDetectionRequest(rawBase64);
 
-            // 4. Handle Result
+            // 4. Handle Visual Result
             handleDetectionResult(apiResponse);
 
-            // 5. Save Result
+            // 5. Save Result to Storage
             const objectIndex = capturedResults.length + 1;
             capturedResults.push({
                 order: objectIndex,
                 timestamp: new Date().toISOString(),
-                image: dataUrl, // Save full data URL for easy display
+                image: dataUrl,
                 data: apiResponse
             });
             sessionStorage.setItem('scanResults', JSON.stringify(capturedResults));
 
-            // 6. Update UI
+            // 6. Final UI Update
             if (apiResponse.success) {
-                statusBadge.innerText = `Captured #${objectIndex}`;
+                statusBadge.innerText = `Success! Saved #${objectIndex}`;
+                statusBadge.style.color = '#55efc4';
                 if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
             } else {
-                statusBadge.innerText = 'No objects detected';
+                statusBadge.innerText = 'No objects found in photo';
+                statusBadge.style.color = '#ffeaa7';
                 if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
             }
 
-            logger.log(`Manual Capture: Object ${objectIndex} processed.`);
+            logger.log(`Manual Capture: Step ${objectIndex} complete.`);
 
         } catch (err) {
             logger.error(`Manual Capture Error: ${err.message}`);
-            statusBadge.innerText = 'Error capturing';
+            statusBadge.innerText = `Error: ${err.message}`;
             statusBadge.style.color = '#ff7675';
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
         } finally {
             isProcessing = false;
+            captureBtn.disabled = false; // Re-enable button
             captureBtn.innerText = 'Take Next Photo';
         }
     };
