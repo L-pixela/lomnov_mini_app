@@ -7,7 +7,7 @@ export class ApiService {
         // Separate URLs for different services
         this.OCR_API_URL = env.VITE_OCR_API_URL || env.VITE_API_URL; // OCR detection backend
         this.IMAGE_UPLOAD_API = env.VITE_IMAGE_UPLOAD_API; // Image storage service
-        this.NOTIFICATION_API = env.VITE_NOTIFICATION_API || env.VITE_MAIN_BACKEND_API; // Notification API
+        this.NOTIFICATION_API = env.VITE_NOTIFICATION_API || env.VITE_MAIN_BACKEND_URL; // Notification API
 
         logger.log(`API Services initialized:
           OCR: ${this.OCR_API_URL}
@@ -153,7 +153,7 @@ export class ApiService {
         logger.log('Sending notification to backend...', resultData);
 
         try {
-            const response = await fetch(`${this.NOTIFICATION_API}/notifications/meter-reading`, {
+            const response = await fetch(this.NOTIFICATION_API, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
