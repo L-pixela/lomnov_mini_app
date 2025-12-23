@@ -10,9 +10,9 @@ class MeterStorageService {
     // Save water meter data
     static saveWaterData(ocrResponse, imageUrl, meterType = 'water') {
         // Log the raw OCR response for debugging
-        logger.log('saveWaterData - Raw OCR response:', ocrResponse);
-        logger.log('saveWaterData - Reading value:', ocrResponse.reading);
-        logger.log('saveWaterData - Reading type:', typeof ocrResponse.reading);
+        // logger.log('saveWaterData - Raw OCR response:', ocrResponse);
+        // logger.log('saveWaterData - Reading value:', ocrResponse.reading);
+        // logger.log('saveWaterData - Reading type:', typeof ocrResponse.reading);
 
         // Extract data from OCR response
         // Use reading_confidence first, fallback to meter_confidence
@@ -23,8 +23,8 @@ class MeterStorageService {
         // IMPORTANT: Keep reading as exact string from OCR, don't convert
         const reading = ocrResponse.reading ? String(ocrResponse.reading) : "0.00";
 
-        logger.log('saveWaterData - Extracted reading:', reading);
-        logger.log('saveWaterData - Reading confidence:', readingConfidence);
+        // logger.log('saveWaterData - Extracted reading:', reading);
+        // logger.log('saveWaterData - Reading confidence:', readingConfidence);
 
         // Format accuracy to 4 decimal places as string
         const accuracy = readingConfidence.toFixed(4);
@@ -38,18 +38,18 @@ class MeterStorageService {
             rawOCR: ocrResponse // Store raw response for debugging
         };
 
-        logger.log('saveWaterData - Final data to save:', data);
+        // logger.log('saveWaterData - Final data to save:', data);
         localStorage.setItem(this.STORAGE_KEYS.WATER_DATA, JSON.stringify(data));
-        logger.log('Water data saved successfully');
+        // logger.log('Water data saved successfully');
         return data;
     }
 
     // Save electricity meter data
     static saveElectricityData(ocrResponse, imageUrl, meterType = 'electricity') {
         // Log the raw OCR response for debugging
-        logger.log('saveElectricityData - Raw OCR response:', ocrResponse);
-        logger.log('saveElectricityData - Reading value:', ocrResponse.reading);
-        logger.log('saveElectricityData - Reading type:', typeof ocrResponse.reading);
+        // logger.log('saveElectricityData - Raw OCR response:', ocrResponse);
+        // logger.log('saveElectricityData - Reading value:', ocrResponse.reading);
+        // logger.log('saveElectricityData - Reading type:', typeof ocrResponse.reading);
 
         // Extract data from OCR response
         // Use reading_confidence first, fallback to meter_confidence
@@ -60,8 +60,8 @@ class MeterStorageService {
         // IMPORTANT: Keep reading as exact string from OCR, don't convert
         const reading = ocrResponse.reading ? String(ocrResponse.reading) : "0.00";
 
-        logger.log('saveElectricityData - Extracted reading:', reading);
-        logger.log('saveElectricityData - Reading confidence:', readingConfidence);
+        // logger.log('saveElectricityData - Extracted reading:', reading);
+        // logger.log('saveElectricityData - Reading confidence:', readingConfidence);
 
         // Format accuracy to 4 decimal places as string
         const accuracy = readingConfidence.toFixed(4);
@@ -75,9 +75,9 @@ class MeterStorageService {
             rawOCR: ocrResponse
         };
 
-        logger.log('saveElectricityData - Final data to save:', data);
+        // logger.log('saveElectricityData - Final data to save:', data);
         localStorage.setItem(this.STORAGE_KEYS.ELECTRICITY_DATA, JSON.stringify(data));
-        logger.log('Electricity data saved successfully');
+        // logger.log('Electricity data saved successfully');
         return data;
     }
 
@@ -128,10 +128,10 @@ export class ApiService {
         // Initialize storage
         this.storage = MeterStorageService;
 
-        logger.log(`API Services initialized:
-          OCR: ${this.OCR_API_URL}
-          Image Upload: ${this.IMAGE_UPLOAD_API}
-          Notification API: ${this.NOTIFICATION_API}`);
+        // logger.log(`API Services initialized:
+        //   OCR: ${this.OCR_API_URL}
+        //   Image Upload: ${this.IMAGE_UPLOAD_API}
+        //   Notification API: ${this.NOTIFICATION_API}`);
     }
 
     /**
@@ -140,11 +140,11 @@ export class ApiService {
      */
     async sendDetectionRequest(image) {
         if (!image) {
-            logger.error("No image provided to API");
+            // logger.error("No image provided to API");
             throw new Error("No image provided");
         }
 
-        logger.log("API: Sending to OCR for meter reading...");
+        // logger.log("API: Sending to OCR for meter reading...");
 
         try {
             let imageBlob = image;
@@ -176,18 +176,18 @@ export class ApiService {
 
             if (!response.ok) {
                 const errText = await response.text();
-                logger.error(`OCR API Failed: ${response.status} - ${errText}`);
+                // logger.error(`OCR API Failed: ${response.status} - ${errText}`);
                 throw new Error(`OCR Request failed: ${response.status}`);
             }
 
             const result = await response.json();
-            logger.log("OCR API Response:", result);
+            // logger.log("OCR API Response:", result);
 
             // Format the new response structure
             return this.formatOCRResponse(result);
 
         } catch (error) {
-            logger.error(`OCR API Error: ${error.message}`);
+            // logger.error(`OCR API Error: ${error.message}`);
             throw error;
         }
     }
@@ -198,14 +198,14 @@ export class ApiService {
      */
     formatOCRResponse(apiResult) {
         // Log what we received from API
-        logger.log('formatOCRResponse - Raw API result:', apiResult);
+        // logger.log('formatOCRResponse - Raw API result:', apiResult);
 
         // IMPORTANT: Python API wraps data in 'result' object
         const data = apiResult.result || apiResult;
 
-        logger.log('formatOCRResponse - Extracted data:', data);
-        logger.log('formatOCRResponse - Reading from API:', data.reading);
-        logger.log('formatOCRResponse - Reading confidence from API:', data.reading_confidence);
+        // logger.log('formatOCRResponse - Extracted data:', data);
+        // logger.log('formatOCRResponse - Reading from API:', data.reading);
+        // logger.log('formatOCRResponse - Reading confidence from API:', data.reading_confidence);
 
         // Format the response
         const formatted = {
@@ -217,7 +217,7 @@ export class ApiService {
             raw: apiResult  // Keep original response for debugging
         };
 
-        logger.log('formatOCRResponse - Formatted response:', formatted);
+        // logger.log('formatOCRResponse - Formatted response:', formatted);
         return formatted;
     }
 
@@ -230,7 +230,7 @@ export class ApiService {
             throw new Error('Image and chatId are required');
         }
 
-        logger.log(`Uploading ${meterType} image for chat ${chatId}...`);
+        // logger.log(`Uploading ${meterType} image for chat ${chatId}...`);
 
         try {
             let imageBlob = image;
@@ -262,12 +262,12 @@ export class ApiService {
 
             if (!response.ok) {
                 const errText = await response.text();
-                logger.error(`Image upload failed: ${response.status} - ${errText}`);
+                // logger.error(`Image upload failed: ${response.status} - ${errText}`);
                 throw new Error(`Image upload failed: ${response.status}`);
             }
 
             const result = await response.json();
-            logger.log("Upload API Full Response:", result);
+            // logger.log("Upload API Full Response:", result);
 
             // FIXED: Properly extract URL from various response formats
             let imageUrl = null;
@@ -289,15 +289,15 @@ export class ApiService {
 
             // Validate that we got a URL
             if (!imageUrl) {
-                logger.error('No URL found in upload response:', result);
+                // logger.error('No URL found in upload response:', result);
                 throw new Error('Invalid response from image upload service: No URL found');
             }
 
-            logger.log(`Image uploaded successfully: ${imageUrl}`);
+            // logger.log(`Image uploaded successfully: ${imageUrl}`);
             return imageUrl;
 
         } catch (error) {
-            logger.error(`Image upload error: ${error.message}`);
+            // logger.error(`Image upload error: ${error.message}`);
             throw error;
         }
     }
@@ -307,25 +307,25 @@ export class ApiService {
      */
     async processAndSaveWaterMeter(imageBase64, chatId) {
         try {
-            logger.log(`Processing water meter for chat ${chatId}...`);
+            // logger.log(`Processing water meter for chat ${chatId}...`);
 
             // 1. Save chat ID first
             this.storage.saveChatId(chatId);
 
             // 2. Send to OCR
             const ocrResponse = await this.sendDetectionRequest(imageBase64);
-            logger.log('Water OCR Response:', ocrResponse);
+            // logger.log('Water OCR Response:', ocrResponse);
 
             // 3. Upload image
             const imageUrl = await this.uploadImageToStorage(imageBase64, chatId, 'water');
-            logger.log('Water Image URL:', imageUrl);
+            // logger.log('Water Image URL:', imageUrl);
 
             // 4. Save water data to storage
             const savedData = this.storage.saveWaterData(ocrResponse, imageUrl, 'water');
 
             // 5. Verify storage
             const storedData = this.storage.getWaterData();
-            logger.log('Water data after saving:', storedData);
+            // logger.log('Water data after saving:', storedData);
 
             return {
                 success: true,
@@ -339,7 +339,7 @@ export class ApiService {
             };
 
         } catch (error) {
-            logger.error(`Water meter processing failed: ${error.message}`);
+            // logger.error(`Water meter processing failed: ${error.message}`);
             throw error;
         }
     }
@@ -355,22 +355,22 @@ export class ApiService {
                 throw new Error("Chat ID not found. Please process water meter first.");
             }
 
-            logger.log(`Processing electricity meter for chat ${chatId}...`);
+            // logger.log(`Processing electricity meter for chat ${chatId}...`);
 
             // 1. Send to OCR
             const ocrResponse = await this.sendDetectionRequest(imageBase64);
-            logger.log('Electricity OCR Response:', ocrResponse);
+            // logger.log('Electricity OCR Response:', ocrResponse);
 
             // 2. Upload image
             const imageUrl = await this.uploadImageToStorage(imageBase64, chatId, 'electricity');
-            logger.log('Electricity Image URL:', imageUrl);
+            // logger.log('Electricity Image URL:', imageUrl);
 
             // 3. Save electricity data to storage
             const savedData = this.storage.saveElectricityData(ocrResponse, imageUrl, 'electricity');
 
             // 4. Verify storage
             const storedData = this.storage.getElectricityData();
-            logger.log('Electricity data after saving:', storedData);
+            // logger.log('Electricity data after saving:', storedData);
 
             return {
                 success: true,
@@ -384,7 +384,7 @@ export class ApiService {
             };
 
         } catch (error) {
-            logger.error(`Electricity meter processing failed: ${error.message}`);
+            // logger.error(`Electricity meter processing failed: ${error.message}`);
             throw error;
         }
     }
