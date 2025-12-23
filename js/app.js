@@ -476,14 +476,14 @@ function debugStorage() {
     const electricityRaw = localStorage.getItem('meter_electricity_data');
     const chatIdRaw = localStorage.getItem('meter_chat_id');
 
-    console.log('=== STORAGE DEBUG ===');
-    console.log('Status:', status);
-    console.log('Water (raw):', waterRaw);
-    console.log('Electricity (raw):', electricityRaw);
-    console.log('Chat ID (raw):', chatIdRaw);
-    console.log('Current step:', currentStep);
-    console.log('Is processing:', isProcessing);
-    console.log('==================');
+    // console.log('=== STORAGE DEBUG ===');
+    // console.log('Status:', status);
+    // console.log('Water (raw):', waterRaw);
+    // console.log('Electricity (raw):', electricityRaw);
+    // console.log('Chat ID (raw):', chatIdRaw);
+    // console.log('Current step:', currentStep);
+    // console.log('Is processing:', isProcessing);
+    // console.log('==================');
 
     return status;
 }
