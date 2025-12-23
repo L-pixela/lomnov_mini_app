@@ -1,4 +1,3 @@
-import { logger } from './logger.js';
 import { Camera } from './camera.js';
 import { FrameProcessor } from './frame-processor.js';
 import { ApiService } from './api-service.js';
@@ -62,7 +61,7 @@ function checkExistingData() {
             return true;
         }
     } catch (error) {
-        logger.error('Error checking existing data:', error);
+        // Silent error handling
     }
     return false;
 }
@@ -118,7 +117,6 @@ async function startApp() {
         // logger.log(`App started successfully. Chat ID: ${chatId}, Current step: ${currentStep}`);
 
     } catch (e) {
-        logger.error(`App Error: ${e.message}`);
         statusBadge.innerText = `Error: ${e.message.substring(0, 30)}...`;
         statusBadge.style.color = '#ff7675';
         statusBadge.style.background = 'rgba(231, 76, 60, 0.8)';
@@ -381,7 +379,6 @@ async function handleDetectionResult(imageBase64) {
 
         return ocrResponse;
     } catch (error) {
-        logger.error(`OCR analysis failed: ${error.message}`);
         statusBadge.innerText = 'Analysis skipped';
         return null;
     }
@@ -421,9 +418,6 @@ function drawDetectionBoxes(detections) {
 }
 
 function handleCaptureError(err) {
-    logger.error(`Capture Error: ${err.message}`);
-    logger.error('Stack:', err.stack);
-
     statusBadge.innerText = `Error: ${err.message.substring(0, 40)}...`;
     statusBadge.style.color = '#ff7675';
 
@@ -431,12 +425,6 @@ function handleCaptureError(err) {
 
     // Keep appropriate button state
     updateUIForStep(currentStep);
-
-    // Show more detailed error in console
-    // logger.log('Current state at error:');
-    // logger.log('- Current step:', currentStep);
-    // logger.log('- Is processing:', isProcessing);
-    // logger.log('- Storage status:', api.getProgressStatus());
 
     // Clear error after 3 seconds
     setTimeout(() => {

@@ -1,5 +1,3 @@
-import { logger } from './logger.js';
-
 // ==================== STORAGE SERVICE ====================
 class MeterStorageService {
     // Storage keys
@@ -417,7 +415,7 @@ export class ApiService {
             }
         };
 
-        logger.log("Final payload built from storage:", payload);
+        // logger.log("Final payload built from storage:", payload);
         return payload;
     }
 
@@ -429,15 +427,15 @@ export class ApiService {
             // 1. Build final payload from storage
             const finalPayload = this.buildFinalPayloadFromStorage();
 
-            logger.log('Sending notification with payload:', finalPayload);
+            // logger.log('Sending notification with payload:', finalPayload);
 
             // 2. Send notification
             const notificationResponse = await this.sendNotification(finalPayload);
 
             // 3. Clear storage after successful submission
-            logger.log('✅ Notification sent successfully. Clearing storage...');
+            // logger.log('✅ Notification sent successfully. Clearing storage...');
             this.storage.clearAll();
-            logger.log('✅ Storage cleared successfully');
+            // logger.log('✅ Storage cleared successfully');
 
             // Verify storage was cleared
             const verifyCleared = {
@@ -445,7 +443,7 @@ export class ApiService {
                 waterData: this.storage.getWaterData(),
                 electricityData: this.storage.getElectricityData()
             };
-            logger.log('Storage state after clearing:', verifyCleared);
+            // logger.log('Storage state after clearing:', verifyCleared);
 
             return {
                 success: true,
@@ -456,7 +454,6 @@ export class ApiService {
             };
 
         } catch (error) {
-            logger.error(`Submission from storage failed: ${error.message}`);
             throw error;
         }
     }
@@ -469,7 +466,7 @@ export class ApiService {
             throw new Error('Valid result data is required');
         }
 
-        logger.log('Sending notification to backend...', resultData);
+        // logger.log('Sending notification to backend...', resultData);
 
         try {
             const response = await fetch(this.NOTIFICATION_API, {
@@ -486,13 +483,12 @@ export class ApiService {
             const responseText = await response.text();
 
             if (!response.ok) {
-                logger.error(`Notification failed: ${response.status}`);
-                logger.error('Response body:', responseText);
+                // Get response text first for better error handling
+                const responseText = await response.text();
 
                 // Try to parse as JSON for structured error
                 try {
                     const errorJson = JSON.parse(responseText);
-                    logger.error('Parsed error:', errorJson);
                     throw new Error(`Notification failed: ${response.status} - ${errorJson.message || errorJson.error || 'Unknown error'}`);
                 } catch (parseError) {
                     // If not JSON, throw with text
@@ -505,16 +501,14 @@ export class ApiService {
             try {
                 result = JSON.parse(responseText);
             } catch (parseError) {
-                logger.warn('Response is not JSON:', responseText);
+                // logger.warn('Response is not JSON:', responseText);
                 result = { success: true, raw: responseText };
             }
 
-            logger.log('Notification sent successfully', result);
+            // logger.log('Notification sent successfully', result);
             return result;
 
         } catch (error) {
-            logger.error(`Notification error: ${error.message}`);
-            logger.error('Stack:', error.stack);
             throw error;
         }
     }
