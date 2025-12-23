@@ -220,13 +220,16 @@ export class ApiService {
             }
 
             const result = await response.json();
+            logger.log("Upload API Full Response:", result);
 
-            if (!result.success || !result.url) {
-                throw new Error('Invalid response from image upload service');
+            // Relaxed validation: accept any result that has a URL
+            if (!result.url && !result.success) {
+                throw new Error('Invalid response from image upload service: No URL found');
             }
 
-            logger.log(`Image uploaded successfully: ${result.url}`);
-            return result.url;
+            const imageUrl = result.url || result.data?.url;
+            logger.log(`Image uploaded successfully: ${imageUrl}`);
+            return imageUrl;
 
         } catch (error) {
             logger.error(`Image upload error: ${error.message}`);

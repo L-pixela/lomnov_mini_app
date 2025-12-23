@@ -33,10 +33,10 @@ progressBar.innerHTML = `
 `;
 
 // Find camera container and insert progress bar
-const cameraContainer = document.querySelector('.camera-container');
-if (cameraContainer) {
+const videoContainer = document.querySelector('.video-container');
+if (videoContainer) {
     // Insert progress bar at the beginning
-    cameraContainer.insertBefore(progressBar, cameraContainer.firstChild);
+    videoContainer.insertBefore(progressBar, videoContainer.firstChild);
 }
 
 // Modules
