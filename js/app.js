@@ -32,7 +32,7 @@ let isProcessing = false;
 let waterImageData = null;
 let electricityImageData = null;
 let currentStep = 0; // 0 = water, 1 = electricity
-let chatId = tg.initDataUnsafe.user.id.toString(); // Get chat_id from Telegram
+let chatId = tg.initDataUnsafe.user.id.toString();
 
 function resizeCanvas() {
     if (!videoEl.videoWidth || !videoEl.videoHeight) return;
@@ -101,7 +101,7 @@ function setupManualCapture() {
                 statusBadge.innerText = 'Electricity meter captured!';
             }
 
-            // 3. SEND TO OCR FOR METER READING (optional - you can skip this if not needed for UI)
+            // 3. SEND TO OCR FOR METER READING (optional - for UI feedback)
             statusBadge.innerText = 'Analyzing meter reading...';
             const ocrResponse = await api.sendDetectionRequest(rawBase64);
 
@@ -143,7 +143,7 @@ function setupManualCapture() {
 
                     if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-                    // Show summary
+                    // Show summary - access result through result.result
                     if (tg.showAlert) {
                         tg.showAlert(`✅ Submitted Successfully!\n\nWater: ${result.result.water_meter}\nElectricity: ${result.result.electricity_meter}`);
                     }

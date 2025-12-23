@@ -7,7 +7,7 @@ export class ApiService {
         // Separate URLs for different services
         this.OCR_API_URL = env.VITE_OCR_API_URL || env.VITE_API_URL; // OCR detection backend
         this.IMAGE_UPLOAD_API = env.VITE_IMAGE_UPLOAD_API; // Image storage service
-        this.NOTIFICATION_API = env.VITE_NOTIFICATION_API || env.VITE_MAIN_BACKEND_URL; // Notification API
+        this.NOTIFICATION_API = env.VITE_NOTIFICATION_API || env.VITE_MAIN_BACKEND_API; // Notification API
 
         logger.log(`API Services initialized:
           OCR: ${this.OCR_API_URL}
@@ -141,8 +141,8 @@ export class ApiService {
     }
 
     /**
-     * Send notification with meter reading results
-     * @param {Object} resultData - The complete result object
+     * Send notification with meter reading results wrapped in "result" object
+     * @param {Object} resultData - The complete result object wrapped in "result"
      * @returns {Promise<Object>} Notification API response
      */
     async sendNotification(resultData) {
@@ -180,9 +180,9 @@ export class ApiService {
     }
 
     /**
-     * Build the complete result object for notification
+     * Build the complete result object for notification, wrapped in "result"
      * @param {Object} params - Parameters for building result
-     * @returns {Object} Formatted result object
+     * @returns {Object} Formatted result object with wrapper
      */
     buildResultObject({
         chatId,
@@ -193,15 +193,17 @@ export class ApiService {
         waterImage = "",
         electricityImage = ""
     }) {
-        // Return exactly the format you specified
+        // Return wrapped in "result" object
         return {
-            chat_id: chatId.toString(),
-            water_meter: waterMeter,
-            water_accuracy: waterAccuracy,
-            electricity_meter: electricityMeter,
-            electricity_accuracy: electricityAccuracy,
-            water_image: waterImage,
-            electricity_image: electricityImage
+            result: {
+                chat_id: chatId.toString(),
+                water_meter: waterMeter,
+                water_accuracy: waterAccuracy,
+                electricity_meter: electricityMeter,
+                electricity_accuracy: electricityAccuracy,
+                water_image: waterImage,
+                electricity_image: electricityImage
+            }
         };
     }
 
@@ -330,7 +332,7 @@ export class ApiService {
                 meterData = electricityResult.meterData;
             }
 
-            // Build the final result object
+            // Build the final result object (wrapped in "result")
             const finalResult = this.buildResultObject(meterData);
 
             // Send notification to backend
@@ -339,7 +341,8 @@ export class ApiService {
             return {
                 success: true,
                 notificationSent: true,
-                result: finalResult,
+                result: finalResult.result, // Return just the inner result for UI
+                fullPayload: finalResult, // Keep the full payload for debugging
                 notificationResponse: notificationResponse
             };
 
@@ -356,7 +359,7 @@ export class ApiService {
      */
     async submitProcessedData(meterData) {
         try {
-            // Build the result object
+            // Build the result object (wrapped in "result")
             const resultObject = this.buildResultObject(meterData);
 
             // Send notification
@@ -364,7 +367,8 @@ export class ApiService {
 
             return {
                 success: true,
-                result: resultObject,
+                result: resultObject.result,
+                fullPayload: resultObject,
                 notificationResponse: response
             };
 
