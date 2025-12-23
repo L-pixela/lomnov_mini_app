@@ -12,12 +12,20 @@ class MeterStorageService {
     // Save water meter data
     static saveWaterData(ocrResponse, imageUrl, meterType = 'water') {
         // Extract data from OCR response
+        // Use reading_confidence first, fallback to meter_confidence
+        const readingConfidence = ocrResponse.reading_confidence !== undefined
+            ? ocrResponse.reading_confidence
+            : (ocrResponse.meter_confidence || 0);
+
+        // Format reading: keep as string, or convert to decimal format if needed
         const reading = ocrResponse.reading || "0.00";
-        const accuracy = ocrResponse.reading_confidence || ocrResponse.meter_confidence || 0;
+
+        // Format accuracy to 4 decimal places as string
+        const accuracy = readingConfidence.toFixed(4);
 
         const data = {
-            meter: reading,
-            accuracy: accuracy.toFixed(4), // Keep 4 decimal places for accuracy
+            meter: reading.toString(),           // Ensure string format
+            accuracy: accuracy,                   // Already string with 4 decimals
             imageUrl: imageUrl,
             meterType: meterType,
             timestamp: Date.now(),
@@ -32,12 +40,20 @@ class MeterStorageService {
     // Save electricity meter data
     static saveElectricityData(ocrResponse, imageUrl, meterType = 'electricity') {
         // Extract data from OCR response
+        // Use reading_confidence first, fallback to meter_confidence
+        const readingConfidence = ocrResponse.reading_confidence !== undefined
+            ? ocrResponse.reading_confidence
+            : (ocrResponse.meter_confidence || 0);
+
+        // Format reading: keep as string, or convert to decimal format if needed
         const reading = ocrResponse.reading || "0.00";
-        const accuracy = ocrResponse.reading_confidence || ocrResponse.meter_confidence || 0;
+
+        // Format accuracy to 4 decimal places as string
+        const accuracy = readingConfidence.toFixed(4);
 
         const data = {
-            meter: reading,
-            accuracy: accuracy.toFixed(4),
+            meter: reading.toString(),           // Ensure string format
+            accuracy: accuracy,                   // Already string with 4 decimals
             imageUrl: imageUrl,
             meterType: meterType,
             timestamp: Date.now(),

@@ -51,22 +51,30 @@ let isProcessing = false;
 let currentStep = 0; // 0 = water, 1 = electricity, 2 = submit
 let chatId = tg.initDataUnsafe?.user?.id?.toString() || 'unknown';
 
+// ADDED: Debounce flag to prevent rapid clicks
+let lastCaptureTime = 0;
+const CAPTURE_COOLDOWN = 2000; // 2 seconds between captures
+
 // Check for existing data on startup
 function checkExistingData() {
     try {
         const status = api.getProgressStatus ? api.getProgressStatus() : null;
+
+        logger.log('Checking existing data:', status);
 
         if (status && status.waterCompleted && !status.electricityCompleted) {
             // Resume from electricity step
             currentStep = 1;
             updateUIForStep(1);
             logger.log('Resuming: Water meter already captured');
+            logger.log('Water data:', status.waterMeter);
             return true;
         } else if (status && status.isComplete) {
             // Both completed, ready to submit
             currentStep = 2;
             updateUIForStep(2);
             logger.log('Resuming: Both meters captured, ready to submit');
+            logger.log('Water:', status.waterMeter, 'Electricity:', status.electricityMeter);
             return true;
         }
     } catch (error) {
@@ -119,6 +127,9 @@ async function startApp() {
         statusBadge.innerText = 'Starting Camera...';
         await camera.start();
 
+        // ADDED: Small delay to ensure camera is fully ready
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         // Check for existing data
         const hasExistingData = checkExistingData();
 
@@ -133,6 +144,8 @@ async function startApp() {
         // Setup capture handler
         setupCaptureHandler();
 
+        logger.log(`App started successfully. Chat ID: ${chatId}, Current step: ${currentStep}`);
+
     } catch (e) {
         logger.error(`App Error: ${e.message}`);
         statusBadge.innerText = `Error: ${e.message.substring(0, 30)}...`;
@@ -145,10 +158,22 @@ function setupCaptureHandler() {
     if (!captureBtn) return;
 
     captureBtn.onclick = async () => {
-        if (isProcessing || !camera.isPlaying()) return;
+        // ADDED: Debounce check
+        const now = Date.now();
+        if (now - lastCaptureTime < CAPTURE_COOLDOWN) {
+            logger.log('Capture blocked: too soon after last capture');
+            statusBadge.innerText = 'Please wait...';
+            return;
+        }
+
+        if (isProcessing || !camera.isPlaying()) {
+            logger.log('Capture blocked: already processing or camera not ready');
+            return;
+        }
 
         try {
             isProcessing = true;
+            lastCaptureTime = now;
             captureBtn.disabled = true;
 
             if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
@@ -166,6 +191,8 @@ function setupCaptureHandler() {
 
             const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
             const rawBase64 = dataUrl.split(',')[1];
+
+            logger.log(`Captured image for step ${currentStep} (${currentStep === 0 ? 'water' : currentStep === 1 ? 'electricity' : 'submit'})`);
 
             // PROCESS BASED ON CURRENT STEP
             switch (currentStep) {
@@ -185,7 +212,11 @@ function setupCaptureHandler() {
         } catch (err) {
             handleCaptureError(err);
         } finally {
-            captureBtn.disabled = false;
+            // ADDED: Small delay before re-enabling button
+            setTimeout(() => {
+                isProcessing = false;
+                captureBtn.disabled = false;
+            }, 500);
         }
     };
 }
@@ -195,11 +226,26 @@ async function processWaterMeter(imageBase64) {
         statusBadge.innerText = 'Processing water meter...';
         statusBadge.style.color = '#74b9ff';
 
+        logger.log('Starting water meter processing...');
+
         // Use the storage-enabled method
         const result = await api.processAndSaveWaterMeter(imageBase64, chatId);
 
+        logger.log('Water meter processing result:', result);
+
+        // ADDED: Verify storage immediately
+        const storedData = api.storage.getWaterData();
+        logger.log('Verified water data in storage:', storedData);
+
+        if (!storedData) {
+            throw new Error('Water data failed to save to storage');
+        }
+
         // OCR feedback
         await handleDetectionResult(imageBase64);
+
+        // ADDED: Small delay to ensure storage is fully written
+        await new Promise(resolve => setTimeout(resolve, 300));
 
         // Move to next step
         currentStep = 1;
@@ -209,7 +255,8 @@ async function processWaterMeter(imageBase64) {
         statusBadge.style.color = '#55efc4';
 
         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-        logger.log(`Water meter captured: ${result.meterValue || 'N/A'}`);
+        logger.log(`✓ Water meter captured: ${result.meterValue}`);
+        logger.log('Ready for electricity meter');
 
     } catch (error) {
         throw new Error(`Water meter processing failed: ${error.message}`);
@@ -221,21 +268,50 @@ async function processElectricityMeter(imageBase64) {
         statusBadge.innerText = 'Processing electricity meter...';
         statusBadge.style.color = '#fdcb6e';
 
+        logger.log('Starting electricity meter processing...');
+
+        // ADDED: Verify water data exists before proceeding
+        const waterData = api.storage.getWaterData();
+        const chatIdStored = api.storage.getChatId();
+
+        logger.log('Pre-check - Water data exists:', !!waterData);
+        logger.log('Pre-check - Chat ID exists:', !!chatIdStored);
+        logger.log('Pre-check - Water meter value:', waterData?.meter);
+
+        if (!waterData || !chatIdStored) {
+            throw new Error('Water meter data not found. Please capture water meter first.');
+        }
+
         // Use the storage-enabled method
         const result = await api.processAndSaveElectricityMeter(imageBase64);
 
+        logger.log('Electricity meter processing result:', result);
+
+        // ADDED: Verify storage immediately
+        const storedData = api.storage.getElectricityData();
+        logger.log('Verified electricity data in storage:', storedData);
+
+        if (!storedData) {
+            throw new Error('Electricity data failed to save to storage');
+        }
+
         // OCR feedback
         await handleDetectionResult(imageBase64);
+
+        // ADDED: Small delay to ensure storage is fully written
+        await new Promise(resolve => setTimeout(resolve, 300));
 
         // Move to submit step
         currentStep = 2;
         updateUIForStep(2);
 
-        statusBadge.innerText = `Water: ${api.getProgressStatus()?.waterMeter || '?'} | Elec: ${result.meterValue} ✓`;
+        const waterMeter = waterData.meter;
+        statusBadge.innerText = `Water: ${waterMeter} | Elec: ${result.meterValue} ✓`;
         statusBadge.style.color = '#00b894';
 
         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-        logger.log(`Electricity meter captured: ${result.meterValue || 'N/A'}`);
+        logger.log(`✓ Electricity meter captured: ${result.meterValue}`);
+        logger.log('Both meters complete. Ready to submit.');
 
     } catch (error) {
         throw new Error(`Electricity meter processing failed: ${error.message}`);
@@ -248,8 +324,26 @@ async function submitBothReadings() {
         statusBadge.style.color = '#a29bfe';
         captureBtn.disabled = true;
 
+        logger.log('Starting submission...');
+
+        // ADDED: Final verification before submission
+        const waterData = api.storage.getWaterData();
+        const electricityData = api.storage.getElectricityData();
+        const chatIdStored = api.storage.getChatId();
+
+        logger.log('Pre-submit check:');
+        logger.log('- Water data:', waterData);
+        logger.log('- Electricity data:', electricityData);
+        logger.log('- Chat ID:', chatIdStored);
+
+        if (!waterData || !electricityData || !chatIdStored) {
+            throw new Error('Missing data. Please recapture meters.');
+        }
+
         // Use storage method
         const result = await api.submitFromStorage();
+
+        logger.log('Submission result:', result);
 
         if (result.success) {
             // SUCCESS
@@ -276,7 +370,7 @@ async function submitBothReadings() {
                 }
             };
 
-            logger.log('Readings submitted successfully:', result);
+            logger.log('✓ Readings submitted successfully:', result);
 
             // Auto-close after 5 seconds
             setTimeout(() => {
@@ -357,6 +451,8 @@ function drawDetectionBoxes(detections) {
 
 function handleCaptureError(err) {
     logger.error(`Capture Error: ${err.message}`);
+    logger.error('Stack:', err.stack);
+
     statusBadge.innerText = `Error: ${err.message.substring(0, 40)}...`;
     statusBadge.style.color = '#ff7675';
 
@@ -364,6 +460,12 @@ function handleCaptureError(err) {
 
     // Keep appropriate button state
     updateUIForStep(currentStep);
+
+    // Show more detailed error in console
+    logger.log('Current state at error:');
+    logger.log('- Current step:', currentStep);
+    logger.log('- Is processing:', isProcessing);
+    logger.log('- Storage status:', api.getProgressStatus());
 
     // Clear error after 3 seconds
     setTimeout(() => {
@@ -378,6 +480,7 @@ function handleCaptureError(err) {
 function resetApp() {
     currentStep = 0;
     isProcessing = false;
+    lastCaptureTime = 0;
 
     // Clear storage
     if (api.resetStorage) {
@@ -395,8 +498,29 @@ function resetApp() {
     logger.log('App reset successfully');
 }
 
+// ADDED: Debug function to check storage state
+function debugStorage() {
+    const status = api.getProgressStatus();
+    const waterRaw = localStorage.getItem('meter_water_data');
+    const electricityRaw = localStorage.getItem('meter_electricity_data');
+    const chatIdRaw = localStorage.getItem('meter_chat_id');
+
+    console.log('=== STORAGE DEBUG ===');
+    console.log('Status:', status);
+    console.log('Water (raw):', waterRaw);
+    console.log('Electricity (raw):', electricityRaw);
+    console.log('Chat ID (raw):', chatIdRaw);
+    console.log('Current step:', currentStep);
+    console.log('Is processing:', isProcessing);
+    console.log('==================');
+
+    return status;
+}
+
 // Expose for debugging
 window.resetApp = resetApp;
+window.debugStorage = debugStorage;
+window.api = api; // For manual testing
 
 // Add CSS for progress bar
 const style = document.createElement('style');
