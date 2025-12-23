@@ -538,5 +538,4 @@ export class ApiService {
         this.storage.clearAll();
         return { success: true, message: "Storage cleared" };
     }
-
 }
