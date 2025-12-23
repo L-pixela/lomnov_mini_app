@@ -177,6 +177,7 @@ export class ApiService {
 
     /**
      * Upload image to storage service
+     * FIXED: Better response validation and error handling
      */
     async uploadImageToStorage(image, chatId, meterType = 'water') {
         if (!image || !chatId) {
@@ -222,12 +223,30 @@ export class ApiService {
             const result = await response.json();
             logger.log("Upload API Full Response:", result);
 
-            // Relaxed validation: accept any result that has a URL
-            if (!result.url && !result.success) {
+            // FIXED: Properly extract URL from various response formats
+            let imageUrl = null;
+
+            // Try direct url field
+            if (result.url) {
+                imageUrl = result.url;
+            }
+            // Try nested data.url
+            else if (result.data && result.data.url) {
+                imageUrl = result.data.url;
+            }
+            // Try path field (some APIs return path instead of url)
+            else if (result.path && this.IMAGE_UPLOAD_API) {
+                // Construct full URL from path if needed
+                const baseUrl = new URL(this.IMAGE_UPLOAD_API).origin;
+                imageUrl = result.path.startsWith('http') ? result.path : `${baseUrl}${result.path.startsWith('/') ? '' : '/'}${result.path}`;
+            }
+
+            // Validate that we got a URL
+            if (!imageUrl) {
+                logger.error('No URL found in upload response:', result);
                 throw new Error('Invalid response from image upload service: No URL found');
             }
 
-            const imageUrl = result.url || result.data?.url;
             logger.log(`Image uploaded successfully: ${imageUrl}`);
             return imageUrl;
 
