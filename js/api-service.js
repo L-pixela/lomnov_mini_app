@@ -372,6 +372,7 @@ export class ApiService {
         }
 
         // Build the payload in the EXACT required format
+        // Laravel expects: { result: { ... } }
         const payload = {
             result: {
                 chat_id: chatId.toString(),
@@ -402,12 +403,22 @@ export class ApiService {
             const notificationResponse = await this.sendNotification(finalPayload);
 
             // 3. Clear storage after successful submission
+            logger.log('✅ Notification sent successfully. Clearing storage...');
             this.storage.clearAll();
+            logger.log('✅ Storage cleared successfully');
+
+            // Verify storage was cleared
+            const verifyCleared = {
+                chatId: this.storage.getChatId(),
+                waterData: this.storage.getWaterData(),
+                electricityData: this.storage.getElectricityData()
+            };
+            logger.log('Storage state after clearing:', verifyCleared);
 
             return {
                 success: true,
                 message: "Meter readings submitted successfully",
-                payload: finalPayload.result, // Return inner result for UI
+                payload: finalPayload.result, // Return inner result for UI display
                 notificationResponse: notificationResponse,
                 fullPayload: finalPayload
             };
@@ -433,24 +444,45 @@ export class ApiService {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "ngrok-skip-browser-warning": "true"
+                    "ngrok-skip-browser-warning": "true",
+                    "Accept": "application/json"
                 },
                 body: JSON.stringify(resultData)
             });
 
+            // Get response text first for better error handling
+            const responseText = await response.text();
+
             if (!response.ok) {
-                const errText = await response.text();
-                logger.error(`Notification failed: ${response.status} - ${errText}`);
-                throw new Error(`Notification failed: ${response.status}`);
+                logger.error(`Notification failed: ${response.status}`);
+                logger.error('Response body:', responseText);
+
+                // Try to parse as JSON for structured error
+                try {
+                    const errorJson = JSON.parse(responseText);
+                    logger.error('Parsed error:', errorJson);
+                    throw new Error(`Notification failed: ${response.status} - ${errorJson.message || errorJson.error || 'Unknown error'}`);
+                } catch (parseError) {
+                    // If not JSON, throw with text
+                    throw new Error(`Notification failed: ${response.status} - ${responseText.substring(0, 200)}`);
+                }
             }
 
-            const result = await response.json();
-            logger.log('Notification sent successfully', result);
+            // Try to parse successful response
+            let result;
+            try {
+                result = JSON.parse(responseText);
+            } catch (parseError) {
+                logger.warn('Response is not JSON:', responseText);
+                result = { success: true, raw: responseText };
+            }
 
+            logger.log('Notification sent successfully', result);
             return result;
 
         } catch (error) {
             logger.error(`Notification error: ${error.message}`);
+            logger.error('Stack:', error.stack);
             throw error;
         }
     }
